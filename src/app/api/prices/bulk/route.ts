@@ -9,9 +9,9 @@ interface Prices {
   scrubbing_price: number;
 }
 
-const priceMapping = {
+const priceMapping: Record<keyof Prices, string> = {
   hourly_rate: 'Почасовая ставка',
-  steam_bath_price: 'Парение в бане',
+  steam_bath_price: 'Путевое парение',
   brand_steam_price: 'Фирменное парение',
   intro_steam_price: 'Ознакомительное парение',
   scrubbing_price: 'Скрабирование'
@@ -114,7 +114,7 @@ export async function GET() {
     };
     
     // Заполняем данными из базы
-    prices.forEach(price => {
+    prices.forEach((price: { name: string; price: number }) => {
       const key = Object.keys(priceMapping).find(k => priceMapping[k as keyof Prices] === price.name);
       if (key) {
         pricesObject[key as keyof Prices] = price.price;

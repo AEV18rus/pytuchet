@@ -48,7 +48,7 @@ export default function PricingPage() {
       if (response.ok) {
         setShowSuccess(true);
         
-        // Перейти на главную страницу через 1 секунду
+        // Перейти на добавление новой смены (главная страница) через 1 секунду
         setTimeout(() => {
           window.location.href = '/';
         }, 1000);

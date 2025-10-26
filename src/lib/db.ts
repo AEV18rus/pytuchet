@@ -229,7 +229,7 @@ async function initDefaultPrices() {
     // Добавляем начальные цены
     const defaultPrices = [
       { name: 'Почасовая ставка', price: 400 },
-      { name: 'Парение в бане', price: 3500 },
+      { name: 'Путевое парение', price: 3500 },
       { name: 'Фирменное парение', price: 4200 },
       { name: 'Ознакомительное парение', price: 2500 },
       { name: 'Скрабирование', price: 1200 }

@@ -6,15 +6,17 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "init-postgres": "node scripts/init-postgres.js"
   },
   "dependencies": {
+    "@types/pg": "^8.15.5",
     "@vercel/postgres": "^0.10.0",
+    "dotenv": "^17.2.3",
     "next": "16.0.0",
+    "pg": "^8.16.3",
     "react": "19.2.0",
-    "react-dom": "19.2.0",
-    "sqlite": "^5.1.1",
-    "sqlite3": "^5.1.6"
+    "react-dom": "19.2.0"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",

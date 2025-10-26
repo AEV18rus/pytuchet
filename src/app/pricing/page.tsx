@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import Image from 'next/image';
 
 interface Prices {
   hourly_rate: number;
@@ -306,14 +307,8 @@ export default function PricingPage() {
           }
 
           .logo {
-            width: 80px;
-            height: 80px;
-            font-size: 32px;
-          }
-
-          .logo img {
-            width: 40px !important;
-            height: 40px !important;
+            width: 100px;
+            height: 100px;
           }
 
           .header-text {
@@ -372,8 +367,14 @@ export default function PricingPage() {
         <div className="header">
           <div className="header-content">
             <div className="logo">
-                <img src="/logo.svg" alt="Логотип" style={{width: '120px', height: '120px'}} />
-              </div>
+              <Image 
+                src="/logo.svg" 
+                alt="Логотип" 
+                width={120} 
+                height={120}
+                priority
+              />
+            </div>
             <div className="header-text">
               <h1>Путевый Учет</h1>
               <p>Управление ценами на услуги</p>

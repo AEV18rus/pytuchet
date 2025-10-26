@@ -1,9 +1,32 @@
 import { sql } from '@vercel/postgres';
-import sqlite3 from 'sqlite3';
-import { open } from 'sqlite';
-import path from 'path';
+import { Pool } from 'pg';
 
-const isProduction = process.env.NODE_ENV === 'production';
+// Определяем среду выполнения
+const isProduction = process.env.NODE_ENV === 'production' || process.env.VERCEL;
+
+// Создаем пул подключений для локальной разработки
+let localPool: Pool | null = null;
+
+if (!isProduction) {
+  localPool = new Pool({
+    connectionString: process.env.POSTGRES_URL,
+  });
+}
+
+// Универсальная функция для выполнения SQL запросов
+async function executeQuery(query: string, params: any[] = []) {
+  if (isProduction) {
+    // Используем Vercel Postgres для production
+    return await sql.query(query, params);
+  } else {
+    // Используем обычный PostgreSQL для локальной разработки
+    if (!localPool) {
+      throw new Error('Local PostgreSQL pool not initialized');
+    }
+    const result = await localPool.query(query, params);
+    return { rows: result.rows };
+  }
+}
 
 // Типы для данных
 export interface Shift {
@@ -30,203 +53,135 @@ export interface Price {
   price: number;
 }
 
-// Инициализация SQLite для локальной разработки
-async function initSQLite() {
-  const dbPath = path.join(process.cwd(), 'shifts.db');
-  const db = await open({
-    filename: dbPath,
-    driver: sqlite3.Database
-  });
-
-  // Проверяем, существует ли таблица shifts с новой схемой (включая поля цен)
-  const tableInfo = await db.all("PRAGMA table_info(shifts)");
-  const hasNewSchema = tableInfo.some(column => column.name === 'hourly_rate');
-
-  if (!hasNewSchema) {
-    // Удаляем старую таблицу и создаем новую
-    await db.exec('DROP TABLE IF EXISTS shifts');
-  }
-
-  // Создание таблиц если их нет
-  await db.exec(`
-    CREATE TABLE IF NOT EXISTS shifts (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      date TEXT NOT NULL,
-      hours REAL NOT NULL,
-      steam_bath INTEGER NOT NULL DEFAULT 0,
-      brand_steam INTEGER NOT NULL DEFAULT 0,
-      intro_steam INTEGER NOT NULL DEFAULT 0,
-      scrubbing INTEGER NOT NULL DEFAULT 0,
-      masters INTEGER NOT NULL DEFAULT 1,
-      total REAL NOT NULL,
-      hourly_rate REAL NOT NULL,
-      steam_bath_price REAL NOT NULL,
-      brand_steam_price REAL NOT NULL,
-      intro_steam_price REAL NOT NULL,
-      scrubbing_price REAL NOT NULL
-    )
-  `);
-
-  await db.exec(`
-    CREATE TABLE IF NOT EXISTS prices (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      name TEXT NOT NULL UNIQUE,
-      price REAL NOT NULL
-    )
-  `);
-
-  return db;
-}
-
-// Инициализация Postgres для production
+// Инициализация PostgreSQL таблиц
 async function initPostgres() {
-  // Создание таблиц если их нет
-  await sql`
-    CREATE TABLE IF NOT EXISTS shifts (
-      id SERIAL PRIMARY KEY,
-      date TEXT NOT NULL,
-      hours REAL NOT NULL,
-      steam_bath INTEGER NOT NULL DEFAULT 0,
-      brand_steam INTEGER NOT NULL DEFAULT 0,
-      intro_steam INTEGER NOT NULL DEFAULT 0,
-      scrubbing INTEGER NOT NULL DEFAULT 0,
-      masters INTEGER NOT NULL DEFAULT 1,
-      total REAL NOT NULL,
-      hourly_rate REAL NOT NULL,
-      steam_bath_price REAL NOT NULL,
-      brand_steam_price REAL NOT NULL,
-      intro_steam_price REAL NOT NULL,
-      scrubbing_price REAL NOT NULL
-    )
-  `;
+  try {
+    // Создание таблиц если их нет
+    await executeQuery(`
+      CREATE TABLE IF NOT EXISTS shifts (
+        id SERIAL PRIMARY KEY,
+        date TEXT NOT NULL,
+        hours REAL NOT NULL,
+        steam_bath INTEGER NOT NULL DEFAULT 0,
+        brand_steam INTEGER NOT NULL DEFAULT 0,
+        intro_steam INTEGER NOT NULL DEFAULT 0,
+        scrubbing INTEGER NOT NULL DEFAULT 0,
+        masters INTEGER NOT NULL DEFAULT 1,
+        total REAL NOT NULL,
+        hourly_rate REAL NOT NULL,
+        steam_bath_price REAL NOT NULL,
+        brand_steam_price REAL NOT NULL,
+        intro_steam_price REAL NOT NULL,
+        scrubbing_price REAL NOT NULL
+      )
+    `);
 
-  await sql`
-    CREATE TABLE IF NOT EXISTS prices (
-      id SERIAL PRIMARY KEY,
-      name TEXT NOT NULL UNIQUE,
-      price REAL NOT NULL
-    )
-  `;
+    await executeQuery(`
+      CREATE TABLE IF NOT EXISTS prices (
+        id SERIAL PRIMARY KEY,
+        name TEXT NOT NULL UNIQUE,
+        price REAL NOT NULL
+      )
+    `);
+
+    console.log('PostgreSQL tables initialized successfully');
+  } catch (error) {
+    console.error('Error initializing PostgreSQL tables:', error);
+    throw error;
+  }
 }
 
 // Функции для работы со сменами
 export async function getShifts(): Promise<Shift[]> {
-  if (isProduction) {
-    const { rows } = await sql`SELECT * FROM shifts ORDER BY date DESC, id DESC`;
-    return rows as Shift[];
-  } else {
-    const db = await initSQLite();
-    const shifts = await db.all('SELECT * FROM shifts ORDER BY date DESC, id DESC');
-    await db.close();
-    return shifts as Shift[];
+  try {
+    const result = await executeQuery('SELECT * FROM shifts ORDER BY date DESC, id DESC');
+    return result.rows as Shift[];
+  } catch (error) {
+    console.error('Ошибка при получении смен:', error);
+    throw error;
   }
 }
 
 export async function addShift(shift: Omit<Shift, 'id'>): Promise<void> {
-  if (isProduction) {
-    await sql`
+  try {
+    await executeQuery(`
       INSERT INTO shifts (date, hours, steam_bath, brand_steam, intro_steam, scrubbing, masters, total, hourly_rate, steam_bath_price, brand_steam_price, intro_steam_price, scrubbing_price)
-      VALUES (${shift.date}, ${shift.hours}, ${shift.steam_bath}, ${shift.brand_steam}, ${shift.intro_steam}, ${shift.scrubbing}, ${shift.masters}, ${shift.total}, ${shift.hourly_rate}, ${shift.steam_bath_price}, ${shift.brand_steam_price}, ${shift.intro_steam_price}, ${shift.scrubbing_price})
-    `;
-  } else {
-    const db = await initSQLite();
-    await db.run(
-      'INSERT INTO shifts (date, hours, steam_bath, brand_steam, intro_steam, scrubbing, masters, total, hourly_rate, steam_bath_price, brand_steam_price, intro_steam_price, scrubbing_price) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
-      [shift.date, shift.hours, shift.steam_bath, shift.brand_steam, shift.intro_steam, shift.scrubbing, shift.masters, shift.total, shift.hourly_rate, shift.steam_bath_price, shift.brand_steam_price, shift.intro_steam_price, shift.scrubbing_price]
-    );
-    await db.close();
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+    `, [shift.date, shift.hours, shift.steam_bath, shift.brand_steam, shift.intro_steam, shift.scrubbing, shift.masters, shift.total, shift.hourly_rate, shift.steam_bath_price, shift.brand_steam_price, shift.intro_steam_price, shift.scrubbing_price]);
+  } catch (error) {
+    console.error('Ошибка при добавлении смены:', error);
+    throw error;
   }
 }
 
 export async function deleteShift(id: number): Promise<void> {
-  if (isProduction) {
-    await sql`DELETE FROM shifts WHERE id = ${id}`;
-  } else {
-    const db = await initSQLite();
-    await db.run('DELETE FROM shifts WHERE id = ?', [id]);
-    await db.close();
+  try {
+    await executeQuery('DELETE FROM shifts WHERE id = $1', [id]);
+  } catch (error) {
+    console.error('Ошибка при удалении смены:', error);
+    throw error;
   }
 }
 
 // Функции для работы с ценами
 export async function getPrices(): Promise<Price[]> {
-  if (isProduction) {
-    const { rows } = await sql`SELECT * FROM prices ORDER BY name`;
-    return rows as Price[];
-  } else {
-    const db = await initSQLite();
-    const prices = await db.all('SELECT * FROM prices ORDER BY name');
-    await db.close();
-    return prices as Price[];
+  try {
+    const result = await executeQuery('SELECT * FROM prices ORDER BY id');
+    return result.rows as Price[];
+  } catch (error) {
+    console.error('Error getting prices:', error);
+    throw error;
   }
 }
 
-export async function addPrice(price: Omit<Price, 'id'>): Promise<void> {
-  if (isProduction) {
-    await sql`
-      INSERT INTO prices (name, price)
-      VALUES (${price.name}, ${price.price})
-      ON CONFLICT (name) DO UPDATE SET price = ${price.price}
-    `;
-  } else {
-    const db = await initSQLite();
-    await db.run(
-      'INSERT OR REPLACE INTO prices (name, price) VALUES (?, ?)',
+export async function addPrice(price: Omit<Price, 'id'>): Promise<Price> {
+  try {
+    const result = await executeQuery(
+      'INSERT INTO prices (name, price) VALUES ($1, $2) RETURNING *',
       [price.name, price.price]
     );
-    await db.close();
+    return result.rows[0] as Price;
+  } catch (error) {
+    console.error('Error adding price:', error);
+    throw error;
   }
 }
 
-export async function updatePrice(id: number, price: Omit<Price, 'id'>): Promise<void> {
-  if (isProduction) {
-    await sql`
-      UPDATE prices SET name = ${price.name}, price = ${price.price}
-      WHERE id = ${id}
-    `;
-  } else {
-    const db = await initSQLite();
-    await db.run(
-      'UPDATE prices SET name = ?, price = ? WHERE id = ?',
+export async function updatePrice(id: number, price: Omit<Price, 'id'>): Promise<Price> {
+  try {
+    const result = await executeQuery(
+      'UPDATE prices SET name = $1, price = $2 WHERE id = $3 RETURNING *',
       [price.name, price.price, id]
     );
-    await db.close();
+    return result.rows[0] as Price;
+  } catch (error) {
+    console.error('Error updating price:', error);
+    throw error;
   }
 }
 
 export async function deletePrice(id: number): Promise<void> {
-  if (isProduction) {
-    await sql`DELETE FROM prices WHERE id = ${id}`;
-  } else {
-    const db = await initSQLite();
-    await db.run('DELETE FROM prices WHERE id = ?', [id]);
-    await db.close();
+  try {
+    await executeQuery('DELETE FROM prices WHERE id = $1', [id]);
+  } catch (error) {
+    console.error('Error deleting price:', error);
+    throw error;
   }
 }
 
 // Инициализация базы данных
 export async function initDatabase() {
-  if (isProduction) {
+  try {
     await initPostgres();
     await initDefaultPrices();
-  } else {
-    const db = await initSQLite();
-    await db.close();
-    await initDefaultPrices();
+  } catch (error) {
+    console.error('Ошибка при инициализации базы данных:', error);
+    throw error;
   }
 }
 
-// Инициализация цен по умолчанию если их нет в базе
-async function initDefaultPrices() {
+export async function initDefaultPrices(): Promise<void> {
   try {
-    const existingPrices = await getPrices();
-    
-    // Если цены уже есть, ничего не делаем
-    if (existingPrices.length > 0) {
-      return;
-    }
-    
-    // Добавляем начальные цены
     const defaultPrices = [
       { name: 'Почасовая ставка', price: 400 },
       { name: 'Путевое парение', price: 3500 },
@@ -234,11 +189,17 @@ async function initDefaultPrices() {
       { name: 'Ознакомительное парение', price: 2500 },
       { name: 'Скрабирование', price: 1200 }
     ];
-    
+
     for (const price of defaultPrices) {
-      await addPrice(price);
+      await executeQuery(
+        'INSERT INTO prices (name, price) VALUES ($1, $2) ON CONFLICT (name) DO NOTHING',
+        [price.name, price.price]
+      );
     }
+
+    console.log('Default prices initialized successfully');
   } catch (error) {
-    console.error('Ошибка при инициализации цен по умолчанию:', error);
+    console.error('Error initializing default prices:', error);
+    throw error;
   }
 }

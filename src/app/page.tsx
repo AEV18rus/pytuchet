@@ -1,6 +1,8 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
+import Link from 'next/link';
+import Image from 'next/image';
 
 interface Shift {
   id?: number;
@@ -31,13 +33,26 @@ export default function HomePage() {
   const [loading, setLoading] = useState(true);
   const [newShift, setNewShift] = useState<Omit<Shift, 'id' | 'total'>>({
     date: new Date().toISOString().split('T')[0],
-    hours: 8,
+    hours: 0,
     steam_bath: 0,
     brand_steam: 0,
     intro_steam: 0,
     scrubbing: 0,
-    masters: 1
+    masters: 2
   });
+
+  // Принудительная очистка формы при загрузке
+  useEffect(() => {
+    setNewShift({
+      date: new Date().toISOString().split('T')[0],
+      hours: 0,
+      steam_bath: 0,
+      brand_steam: 0,
+      intro_steam: 0,
+      scrubbing: 0,
+      masters: 2
+    });
+  }, []);
 
   // Загрузка данных
   const loadData = async () => {
@@ -280,17 +295,12 @@ export default function HomePage() {
         }
 
         .logo {
-          width: 100px;
-          height: 100px;
+          width: 120px;
+          height: 120px;
           flex-shrink: 0;
           display: flex;
           align-items: center;
           justify-content: center;
-          background: var(--accent-color);
-          border-radius: 50%;
-          font-size: 40px;
-          color: var(--primary-color);
-          box-shadow: 0 8px 25px rgba(0,0,0,0.2);
         }
 
         .header-text {
@@ -450,6 +460,17 @@ export default function HomePage() {
         .input-field:hover {
           border-color: var(--primary-light);
           box-shadow: 0 4px 8px var(--shadow-light);
+        }
+
+        /* Скрытие стрелок прокрутки в полях number */
+        .input-field[type="number"]::-webkit-outer-spin-button,
+        .input-field[type="number"]::-webkit-inner-spin-button {
+          -webkit-appearance: none;
+          margin: 0;
+        }
+
+        .input-field[type="number"] {
+          -moz-appearance: textfield;
         }
 
         .form-footer {
@@ -614,9 +635,8 @@ export default function HomePage() {
           }
 
           .logo {
-            width: 80px;
-            height: 80px;
-            font-size: 32px;
+            width: 100px;
+            height: 100px;
           }
 
           .header-text {
@@ -654,7 +674,15 @@ export default function HomePage() {
       <div className="container">
         <div className="header">
           <div className="header-content">
-            <div className="logo">🛁</div>
+            <div className="logo">
+              <Image 
+                src="/logo.svg" 
+                alt="Логотип" 
+                width={120} 
+                height={120}
+                priority
+              />
+            </div>
             <div className="header-text">
               <h1>Путёвой учёт - Банные смены</h1>
               <p>Учёт рабочих смен и расчёт заработка</p>
@@ -684,9 +712,9 @@ export default function HomePage() {
                   className="input-field"
                   type="number"
                   step="0.5"
-                  value={newShift.hours.toString()}
-                  onChange={(e) => setNewShift({ ...newShift, hours: Number(e.target.value) })}
-                  placeholder="8"
+                  value={newShift.hours === 0 ? '' : newShift.hours.toString()}
+                  onChange={(e) => setNewShift({ ...newShift, hours: Number(e.target.value) || 0 })}
+                  placeholder=""
                   required
                 />
               </div>
@@ -697,7 +725,7 @@ export default function HomePage() {
                   type="number"
                   value={newShift.masters.toString()}
                   onChange={(e) => setNewShift({ ...newShift, masters: Number(e.target.value) })}
-                  placeholder="1"
+                  placeholder="2"
                   required
                 />
               </div>
@@ -710,9 +738,10 @@ export default function HomePage() {
                 <input
                   className="input-field"
                   type="number"
-                  value={newShift.steam_bath.toString()}
-                  onChange={(e) => setNewShift({ ...newShift, steam_bath: Number(e.target.value) })}
-                  placeholder="0"
+                  min="0"
+                  value={newShift.steam_bath === 0 ? '' : newShift.steam_bath.toString()}
+                  onChange={(e) => setNewShift({ ...newShift, steam_bath: Number(e.target.value) || 0 })}
+                  placeholder=""
                 />
               </div>
               <div className="input-group">
@@ -720,9 +749,10 @@ export default function HomePage() {
                 <input
                   className="input-field"
                   type="number"
-                  value={newShift.brand_steam.toString()}
-                  onChange={(e) => setNewShift({ ...newShift, brand_steam: Number(e.target.value) })}
-                  placeholder="0"
+                  min="0"
+                  value={newShift.brand_steam === 0 ? '' : newShift.brand_steam.toString()}
+                  onChange={(e) => setNewShift({ ...newShift, brand_steam: Number(e.target.value) || 0 })}
+                  placeholder=""
                 />
               </div>
               <div className="input-group">
@@ -730,9 +760,10 @@ export default function HomePage() {
                 <input
                   className="input-field"
                   type="number"
-                  value={newShift.intro_steam.toString()}
-                  onChange={(e) => setNewShift({ ...newShift, intro_steam: Number(e.target.value) })}
-                  placeholder="0"
+                  min="0"
+                  value={newShift.intro_steam === 0 ? '' : newShift.intro_steam.toString()}
+                  onChange={(e) => setNewShift({ ...newShift, intro_steam: Number(e.target.value) || 0 })}
+                  placeholder=""
                 />
               </div>
               <div className="input-group">
@@ -740,9 +771,10 @@ export default function HomePage() {
                 <input
                   className="input-field"
                   type="number"
-                  value={newShift.scrubbing.toString()}
-                  onChange={(e) => setNewShift({ ...newShift, scrubbing: Number(e.target.value) })}
-                  placeholder="0"
+                  min="0"
+                  value={newShift.scrubbing === 0 ? '' : newShift.scrubbing.toString()}
+                  onChange={(e) => setNewShift({ ...newShift, scrubbing: Number(e.target.value) || 0 })}
+                  placeholder=""
                 />
               </div>
             </div>
@@ -757,13 +789,18 @@ export default function HomePage() {
                   Услуги: {(calculateTotal(newShift) - newShift.hours * getPrice('Почасовая ставка')).toLocaleString()}₽
                 </div>
               </div>
-              <button 
-                className="btn" 
-                onClick={handleAddShift} 
-                disabled={!newShift.date || newShift.hours <= 0}
-              >
-                Добавить смену
-              </button>
+              <div style={{display: 'flex', gap: '15px', alignItems: 'center'}}>
+                <button 
+                  className="btn" 
+                  onClick={handleAddShift} 
+                  disabled={!newShift.date || newShift.hours <= 0}
+                >
+                  Добавить смену
+                </button>
+                <Link href="/pricing" className="btn" style={{textDecoration: 'none', display: 'inline-flex', alignItems: 'center', justifyContent: 'center'}}>
+                  Прайс
+                </Link>
+              </div>
             </div>
           </div>
 

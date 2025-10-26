@@ -1,6 +1,5 @@
 import type { Metadata } from "next";
 import "./globals.css";
-import Navigation from "@/components/Navigation";
 
 export const metadata: Metadata = {
   title: "Путёвой учёт",
@@ -15,7 +14,6 @@ export default function RootLayout({
   return (
     <html lang="ru">
       <body>
-        <Navigation />
         <main>
           {children}
         </main>

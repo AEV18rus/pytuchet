@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Тест - Путёвой учёт</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 30px;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #333;
+            text-align: center;
+        }
+        .status {
+            background: #e8f5e8;
+            padding: 15px;
+            border-radius: 5px;
+            margin: 20px 0;
+        }
+        .test-link {
+            display: inline-block;
+            background: #007bff;
+            color: white;
+            padding: 10px 20px;
+            text-decoration: none;
+            border-radius: 5px;
+            margin: 10px 5px;
+        }
+        .test-link:hover {
+            background: #0056b3;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🚀 Тестовая страница - Путёвой учёт</h1>
+        
+        <div class="status">
+            <h3>✅ Статус развертывания:</h3>
+            <p>Эта статическая страница успешно загружается с Vercel!</p>
+            <p>Время загрузки: <span id="loadTime"></span></p>
+        </div>
+        
+        <h3>🔗 Тестовые ссылки:</h3>
+        <a href="/" class="test-link">Главная страница Next.js</a>
+        <a href="/api/hello" class="test-link">API тест</a>
+        
+        <h3>📋 Информация о проекте:</h3>
+        <ul>
+            <li>Framework: Next.js 15</li>
+            <li>Hosting: Vercel</li>
+            <li>Region: Frankfurt (fra1)</li>
+            <li>Build: Standalone</li>
+        </ul>
+        
+        <div style="margin-top: 30px; padding: 15px; background: #f8f9fa; border-radius: 5px;">
+            <small>
+                <strong>Диагностика:</strong> Если вы видите эту страницу, значит Vercel успешно обслуживает статические файлы. 
+                Если главная страница Next.js не работает, проблема в сборке или конфигурации Next.js.
+            </small>
+        </div>
+    </div>
+    
+    <script>
+        document.getElementById('loadTime').textContent = new Date().toLocaleString('ru-RU');
+    </script>
+</body>
+</html>

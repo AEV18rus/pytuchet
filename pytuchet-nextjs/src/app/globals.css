@@ -1,0 +1,253 @@
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+:root {
+    /* Цветовая палитра в стиле русской бани */
+    --primary-color: #4A2B1B;        /* Глубокий банный коричневый */
+    --secondary-color: #7A3E2D;      /* Темный янтарно-красный */
+    --accent-color: #E9D5B5;         /* Березовый бежевый */
+    --background-main: #F2E5D3;      /* Теплый паровой бежевый */
+    --font-color: #2C1A0F;           /* Угольно-коричневый */
+    
+    /* Дополнительные оттенки для интерактивности */
+    --primary-light: #5D3426;        /* Светлее основного */
+    --primary-dark: #3A2015;         /* Темнее основного */
+    --secondary-light: #8B4A38;      /* Светлее вторичного */
+    --secondary-dark: #6A3424;       /* Темнее вторичного */
+    --accent-light: #F0E2C8;         /* Светлее акцентного */
+    --accent-dark: #DCC49F;          /* Темнее акцентного */
+    
+    /* Фоновые оттенки */
+    --background-card: #FEFCF8;      /* Очень светлый теплый белый */
+    --background-section: rgba(233, 213, 181, 0.15); /* Полупрозрачный акцент */
+    
+    /* Тени и границы */
+    --shadow-light: rgba(74, 43, 27, 0.1);
+    --shadow-medium: rgba(74, 43, 27, 0.15);
+    --border-light: rgba(74, 43, 27, 0.2);
+}
+
+body {
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    background: linear-gradient(135deg, var(--background-main) 0%, var(--accent-light) 100%);
+    min-height: 100vh;
+    padding: 20px;
+    color: var(--font-color);
+}
+
+.container {
+    max-width: 800px;
+    margin: 0 auto;
+    background: var(--background-card);
+    border-radius: 15px;
+    box-shadow: 0 20px 40px var(--shadow-light);
+    overflow: hidden;
+}
+
+.header {
+    background: linear-gradient(135deg, var(--primary-color) 0%, var(--secondary-color) 100%);
+    color: var(--accent-color);
+    padding: 30px;
+    text-align: center;
+}
+
+.header-content {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 20px;
+    flex-wrap: nowrap;
+}
+
+.logo {
+    width: 50px;
+    height: 50px;
+    flex-shrink: 0;
+}
+
+.header-text {
+    text-align: left;
+}
+
+.header h1 {
+    font-size: 2.5em;
+    margin-bottom: 10px;
+    text-shadow: 0 2px 4px rgba(0,0,0,0.3);
+}
+
+.content {
+    padding: 30px;
+}
+
+/* Секция для формы новой смены в стиле русской бани */
+.form-section {
+    background: linear-gradient(135deg, var(--background-section) 0%, rgba(122, 62, 45, 0.08) 100%);
+    border-radius: 12px;
+    padding: 30px;
+    margin-bottom: 30px;
+    border: 2px solid var(--primary-color);
+    box-shadow: 0 8px 25px var(--shadow-medium);
+    position: relative;
+}
+
+.form-section::before {
+    content: '';
+    position: absolute;
+    top: -1px;
+    left: -1px;
+    right: -1px;
+    bottom: -1px;
+    background: linear-gradient(135deg, var(--primary-color), var(--secondary-color));
+    border-radius: 12px;
+    z-index: -1;
+}
+
+.form-section h2 {
+    color: var(--primary-color);
+    margin-bottom: 25px;
+    font-size: 1.8em;
+    text-align: center;
+    text-shadow: 0 1px 2px var(--shadow-light);
+}
+
+.form-group {
+    margin-bottom: 20px;
+}
+
+.form-group label {
+    display: block;
+    margin-bottom: 8px;
+    font-weight: 600;
+    color: var(--primary-color);
+    font-size: 1.1em;
+}
+
+.form-group input,
+.form-group select {
+    width: 100%;
+    padding: 12px 15px;
+    border: 2px solid var(--border-light);
+    border-radius: 8px;
+    font-size: 16px;
+    background: var(--background-card);
+    color: var(--font-color);
+    transition: all 0.3s ease;
+}
+
+.form-group input:focus,
+.form-group select:focus {
+    outline: none;
+    border-color: var(--primary-color);
+    box-shadow: 0 0 0 3px rgba(74, 43, 27, 0.1);
+    background: #fff;
+}
+
+.form-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 20px;
+}
+
+.btn {
+    background: linear-gradient(135deg, var(--primary-color) 0%, var(--secondary-color) 100%);
+    color: var(--accent-color);
+    border: none;
+    padding: 15px 30px;
+    border-radius: 8px;
+    font-size: 16px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    box-shadow: 0 4px 15px var(--shadow-medium);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.btn:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 6px 20px var(--shadow-medium);
+    background: linear-gradient(135deg, var(--primary-light) 0%, var(--secondary-light) 100%);
+}
+
+.btn:active {
+    transform: translateY(0);
+    box-shadow: 0 2px 10px var(--shadow-medium);
+}
+
+.btn-secondary {
+    background: linear-gradient(135deg, var(--accent-color) 0%, var(--accent-light) 100%);
+    color: var(--primary-color);
+    border: 2px solid var(--primary-color);
+}
+
+.btn-secondary:hover {
+    background: linear-gradient(135deg, var(--accent-dark) 0%, var(--accent-color) 100%);
+    transform: translateY(-2px);
+    box-shadow: 0 6px 20px var(--shadow-medium);
+}
+
+.btn-secondary:active {
+    transform: translateY(0);
+    box-shadow: 0 2px 10px var(--shadow-medium);
+}
+
+.success-message {
+    background: linear-gradient(135deg, rgba(76, 175, 80, 0.1) 0%, rgba(139, 195, 74, 0.1) 100%);
+    color: #2E7D32;
+    padding: 15px;
+    border-radius: 8px;
+    margin-top: 15px;
+    border: 2px solid rgba(76, 175, 80, 0.3);
+    font-weight: 600;
+    text-align: center;
+}
+
+/* Адаптивность */
+@media (max-width: 768px) {
+    body {
+        padding: 10px;
+    }
+    
+    .container {
+        border-radius: 10px;
+    }
+    
+    .header {
+        padding: 20px;
+    }
+    
+    .header-content {
+        flex-direction: column;
+        gap: 15px;
+    }
+    
+    .logo {
+        width: 40px;
+        height: 40px;
+    }
+    
+    .header h1 {
+        font-size: 2em;
+    }
+    
+    .content {
+        padding: 20px;
+    }
+    
+    .form-section {
+        padding: 20px;
+    }
+    
+    .form-row {
+        grid-template-columns: 1fr;
+        gap: 15px;
+    }
+    
+    .btn {
+        padding: 12px 25px;
+        font-size: 14px;
+    }
+}

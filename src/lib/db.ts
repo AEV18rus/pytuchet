@@ -1,13 +1,18 @@
-import { sql } from '@vercel/postgres';
+import { sql, createClient } from '@vercel/postgres';
 import { Pool } from 'pg';
 
 // Определяем среду выполнения
 const isProduction = process.env.NODE_ENV === 'production' || process.env.VERCEL;
 
+// Создаем клиент для Vercel Postgres
+let vercelClient: any = null;
+
 // Создаем пул подключений для локальной разработки
 let localPool: Pool | null = null;
 
-if (!isProduction) {
+if (isProduction) {
+  vercelClient = createClient();
+} else {
   localPool = new Pool({
     connectionString: process.env.POSTGRES_URL,
   });
@@ -19,9 +24,8 @@ async function executeSimpleQuery(query: string) {
     // Используем Vercel Postgres для production
     try {
       console.log('Executing query on Vercel Postgres:', query.substring(0, 100) + '...');
-      // Для Vercel Postgres используем template literal
-      const result = await sql.query(query);
-      console.log('Query executed successfully, rows:', result.rows.length);
+      const result = await vercelClient.query(query);
+      console.log('Query executed successfully, rows:', result.rows?.length || 0);
       return result;
     } catch (error) {
       console.error('Vercel Postgres query error:', error);
@@ -38,17 +42,26 @@ async function executeSimpleQuery(query: string) {
 }
 
 // Функция для выполнения SQL запросов с параметрами
-async function executeQuery(query: string, params: any[] = []) {
+async function executeQuery(query: string, params?: any[]) {
   if (isProduction) {
-    // Для Vercel Postgres используем простой запрос без параметров
-    return executeSimpleQuery(query);
+    // Используем Vercel Postgres для production
+    try {
+      console.log('Executing parameterized query on Vercel Postgres:', query.substring(0, 100) + '...');
+      console.log('Parameters:', params);
+      const result = await vercelClient.query(query, params);
+      console.log('Query executed successfully, rows:', result.rows?.length || 0);
+      return result;
+    } catch (error) {
+      console.error('Vercel Postgres query error:', error);
+      throw error;
+    }
   } else {
-    // Используем обычный PostgreSQL для локальной разработки
+    // Используем локальный PostgreSQL для разработки
     if (!localPool) {
-      throw new Error('Local PostgreSQL pool not initialized');
+      throw new Error('Database pool not initialized');
     }
     const result = await localPool.query(query, params);
-    return { rows: result.rows };
+    return result;
   }
 }
 
@@ -118,13 +131,8 @@ async function initPostgres() {
 // Функции для работы со сменами
 export async function getShifts(): Promise<Shift[]> {
   try {
-    if (isProduction) {
-      const result = await sql`SELECT * FROM shifts ORDER BY date DESC, id DESC`;
-      return result.rows as Shift[];
-    } else {
-      const result = await executeQuery('SELECT * FROM shifts ORDER BY date DESC, id DESC');
-      return result.rows as Shift[];
-    }
+    const result = await executeQuery('SELECT * FROM shifts ORDER BY date DESC, id DESC');
+    return result.rows as Shift[];
   } catch (error) {
     console.error('Ошибка при получении смен:', error);
     throw error;
@@ -133,25 +141,10 @@ export async function getShifts(): Promise<Shift[]> {
 
 export async function addShift(shift: Omit<Shift, 'id'>): Promise<void> {
   try {
-    if (isProduction) {
-      await sql`
-        INSERT INTO shifts (
-          date, hours, steam_bath, brand_steam, intro_steam, scrubbing, masters, 
-          total, hourly_rate, steam_bath_price, brand_steam_price, intro_steam_price, scrubbing_price
-        )
-        VALUES (
-          ${shift.date}, ${shift.hours}, ${shift.steam_bath}, ${shift.brand_steam}, 
-          ${shift.intro_steam}, ${shift.scrubbing}, ${shift.masters}, ${shift.total}, 
-          ${shift.hourly_rate}, ${shift.steam_bath_price}, ${shift.brand_steam_price}, 
-          ${shift.intro_steam_price}, ${shift.scrubbing_price}
-        )
-      `;
-    } else {
-      await executeQuery(`
-        INSERT INTO shifts (date, hours, steam_bath, brand_steam, intro_steam, scrubbing, masters, total, hourly_rate, steam_bath_price, brand_steam_price, intro_steam_price, scrubbing_price)
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
-      `, [shift.date, shift.hours, shift.steam_bath, shift.brand_steam, shift.intro_steam, shift.scrubbing, shift.masters, shift.total, shift.hourly_rate, shift.steam_bath_price, shift.brand_steam_price, shift.intro_steam_price, shift.scrubbing_price]);
-    }
+    await executeQuery(`
+      INSERT INTO shifts (date, hours, steam_bath, brand_steam, intro_steam, scrubbing, masters, total, hourly_rate, steam_bath_price, brand_steam_price, intro_steam_price, scrubbing_price)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+    `, [shift.date, shift.hours, shift.steam_bath, shift.brand_steam, shift.intro_steam, shift.scrubbing, shift.masters, shift.total, shift.hourly_rate, shift.steam_bath_price, shift.brand_steam_price, shift.intro_steam_price, shift.scrubbing_price]);
   } catch (error) {
     console.error('Ошибка при добавлении смены:', error);
     throw error;
@@ -170,13 +163,8 @@ export async function deleteShift(id: number): Promise<void> {
 // Функции для работы с ценами
 export async function getPrices(): Promise<Price[]> {
   try {
-    if (isProduction) {
-      const result = await sql`SELECT * FROM prices ORDER BY id`;
-      return result.rows as Price[];
-    } else {
-      const result = await executeQuery('SELECT * FROM prices ORDER BY id');
-      return result.rows as Price[];
-    }
+    const result = await executeQuery('SELECT * FROM prices ORDER BY id');
+    return result.rows as Price[];
   } catch (error) {
     console.error('Error getting prices:', error);
     throw error;
@@ -222,8 +210,11 @@ export async function deletePrice(id: number): Promise<void> {
 export async function initDatabase(): Promise<void> {
   try {
     if (isProduction) {
-      // Для Vercel Postgres используем отдельные запросы
-      await sql`
+      // Для Vercel Postgres используем createClient
+      console.log('Initializing Vercel Postgres database...');
+      
+      // Создание таблицы shifts
+      await vercelClient.query(`
         CREATE TABLE IF NOT EXISTS shifts (
           id SERIAL PRIMARY KEY,
           date TEXT NOT NULL,
@@ -240,25 +231,35 @@ export async function initDatabase(): Promise<void> {
           intro_steam_price REAL NOT NULL,
           scrubbing_price REAL NOT NULL
         )
-      `;
+      `);
 
-      await sql`
+      // Создание таблицы prices
+      await vercelClient.query(`
         CREATE TABLE IF NOT EXISTS prices (
           id SERIAL PRIMARY KEY,
           name TEXT NOT NULL UNIQUE,
           price REAL NOT NULL
         )
-      `;
+      `);
 
-      // Добавляем дефолтные цены если их нет
-      const pricesResult = await sql`SELECT COUNT(*) as count FROM prices`;
-      if (pricesResult.rows[0].count === 0) {
-        await sql`INSERT INTO prices (name, price) VALUES ('Почасовая ставка', 400)`;
-        await sql`INSERT INTO prices (name, price) VALUES ('Путевое парение', 3500)`;
-        await sql`INSERT INTO prices (name, price) VALUES ('Фирменное парение', 4200)`;
-        await sql`INSERT INTO prices (name, price) VALUES ('Ознакомительное парение', 2500)`;
-        await sql`INSERT INTO prices (name, price) VALUES ('Скрабирование', 1200)`;
+      // Проверяем, есть ли данные в таблице prices
+      const pricesResult = await vercelClient.query('SELECT COUNT(*) as count FROM prices');
+      const pricesCount = pricesResult.rows[0].count;
+
+      if (pricesCount === 0) {
+        // Добавляем базовые цены
+        await vercelClient.query(`
+          INSERT INTO prices (name, price) VALUES 
+          ('hourly_rate', 500),
+          ('steam_bath', 1000),
+          ('brand_steam', 1500),
+          ('intro_steam', 2000),
+          ('scrubbing', 800)
+        `);
+        console.log('Default prices inserted');
       }
+
+      console.log('Vercel Postgres database initialized successfully');
     } else {
       // Для локальной разработки используем старый метод
       await initPostgres();

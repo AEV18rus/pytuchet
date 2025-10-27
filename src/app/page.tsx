@@ -502,9 +502,9 @@ export default function HomePage() {
           background: linear-gradient(135deg, var(--primary-color) 0%, var(--secondary-color) 100%);
           color: var(--accent-color);
           border: none;
-          padding: 16px 32px;
+          padding: 11px 22px;
           border-radius: 10px;
-          font-size: 16px;
+          font-size: 11px;
           font-weight: 700;
           cursor: pointer;
           transition: all 0.3s ease;
@@ -684,8 +684,7 @@ export default function HomePage() {
               />
             </div>
             <div className="header-text">
-              <h1>Путёвой учёт - Банные смены</h1>
-              <p>Учёт рабочих смен и расчёт заработка</p>
+              <h1>Путёвый Учет</h1>
             </div>
           </div>
         </div>

@@ -17,7 +17,15 @@ if (!isProduction) {
 async function executeQuery(query: string, params: any[] = []) {
   if (isProduction) {
     // Используем Vercel Postgres для production
-    return await sql.query(query, params);
+    try {
+      console.log('Executing query on Vercel Postgres:', query.substring(0, 100) + '...');
+      const result = await sql.query(query, params);
+      console.log('Query executed successfully, rows:', result.rows.length);
+      return result;
+    } catch (error) {
+      console.error('Vercel Postgres query error:', error);
+      throw error;
+    }
   } else {
     // Используем обычный PostgreSQL для локальной разработки
     if (!localPool) {

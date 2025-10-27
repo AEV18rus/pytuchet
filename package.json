@@ -7,7 +7,9 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "init-postgres": "node scripts/init-postgres.js"
+    "init-postgres": "node scripts/init-postgres.js",
+    "init-vercel": "node scripts/init-vercel-postgres.js",
+    "view-db": "node scripts/view-database.js"
   },
   "dependencies": {
     "@types/pg": "^8.15.5",

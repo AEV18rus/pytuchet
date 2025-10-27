@@ -1,36 +1,124 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Pytuchet - Учет рабочих смен
 
-## Getting Started
+Веб-приложение для учета рабочих смен и заработка в банном комплексе. Построено на Next.js с использованием PostgreSQL.
 
-First, run the development server:
+## 🚀 Возможности
 
+- ✅ Учет рабочих смен с детализацией по услугам
+- 💰 Управление ценами на услуги
+- 📊 Автоматический расчет заработка
+- 📱 Адаптивный дизайн для мобильных устройств
+- 🔄 Синхронизация данных в реальном времени
+
+## 🛠 Технологии
+
+- **Frontend**: Next.js 16, React 19, TypeScript, Tailwind CSS
+- **Backend**: Next.js API Routes
+- **База данных**: PostgreSQL (локально) / Vercel Postgres (production)
+- **Деплой**: Vercel
+
+## 📦 Установка и запуск
+
+### Локальная разработка
+
+1. **Клонируйте репозиторий:**
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+git clone https://github.com/AEV18rus/pytuchet.git
+cd pytuchet
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+2. **Установите зависимости:**
+```bash
+npm install
+```
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+3. **Настройте PostgreSQL:**
+```bash
+# Создайте базу данных
+createdb pytuchet
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+# Инициализируйте таблицы
+npm run init-postgres
+```
 
-## Learn More
+4. **Настройте переменные окружения:**
+Скопируйте `.env.local` и настройте подключение к вашей PostgreSQL:
+```bash
+POSTGRES_URL="postgres://username@localhost:5432/pytuchet"
+```
 
-To learn more about Next.js, take a look at the following resources:
+5. **Запустите сервер разработки:**
+```bash
+npm run dev
+```
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+Откройте [http://localhost:3000](http://localhost:3000) в браузере.
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+## 🚀 Деплой на Vercel
 
-## Deploy on Vercel
+### Настройка Vercel Postgres
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+1. **Создайте проект на Vercel:**
+   - Подключите GitHub репозиторий
+   - Vercel автоматически определит Next.js проект
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+2. **Добавьте Vercel Postgres:**
+   - В панели проекта перейдите в Storage → Create Database
+   - Выберите Postgres и создайте базу данных
+   - Vercel автоматически добавит переменные окружения
+
+3. **Инициализируйте базу данных:**
+   ```bash
+   # После деплоя вызовите API для инициализации
+   curl -X POST https://your-app.vercel.app/api/init-db
+   ```
+
+Подробные инструкции см. в [VERCEL_SETUP.md](./VERCEL_SETUP.md)
+
+## 📋 Полезные команды
+
+```bash
+# Разработка
+npm run dev              # Запуск сервера разработки
+npm run build           # Сборка для production
+npm run start           # Запуск production сервера
+
+# База данных
+npm run init-postgres   # Инициализация локальной PostgreSQL
+npm run init-vercel     # Инициализация Vercel Postgres
+npm run view-db         # Просмотр содержимого базы данных
+
+# Деплой
+vercel                  # Деплой на Vercel
+vercel --prod          # Деплой в production
+```
+
+## 📊 Структура базы данных
+
+### Таблица `shifts` (смены)
+- `id` - уникальный идентификатор
+- `date` - дата смены
+- `start_time` - время начала
+- `end_time` - время окончания
+- `services` - JSON с услугами и количеством
+- `total_earnings` - общий заработок
+- `created_at` - время создания записи
+
+### Таблица `prices` (цены)
+- `id` - уникальный идентификатор
+- `service_name` - название услуги
+- `price` - цена за услугу
+- `created_at` - время создания записи
+- `updated_at` - время последнего обновления
+
+## 🤝 Участие в разработке
+
+1. Форкните репозиторий
+2. Создайте ветку для новой функции (`git checkout -b feature/amazing-feature`)
+3. Зафиксируйте изменения (`git commit -m 'Add amazing feature'`)
+4. Отправьте в ветку (`git push origin feature/amazing-feature`)
+5. Откройте Pull Request
+
+## 📄 Лицензия
+
+Этот проект распространяется под лицензией MIT. См. файл `LICENSE` для подробностей.

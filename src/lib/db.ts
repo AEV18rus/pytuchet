@@ -14,7 +14,7 @@ let localPool: Pool | null = null;
 function getVercelClient() {
   if (!vercelClient && isProduction) {
     // Проверяем наличие переменных окружения перед созданием клиента
-    if (process.env.POSTGRES_URL_NON_POOLING || process.env.POSTGRES_URL) {
+    if (process.env.POSTGRES_URL || process.env.DATABASE_URL || process.env.PRISMA_DATABASE_URL) {
       vercelClient = createClient();
     }
   }

@@ -4,11 +4,10 @@ import { initDatabase } from '@/lib/db';
 export async function POST() {
   try {
     // Проверяем наличие переменных окружения
-    if (!process.env.POSTGRES_URL_NON_POOLING && !process.env.POSTGRES_URL) {
+    if (!process.env.POSTGRES_URL && !process.env.DATABASE_URL && !process.env.PRISMA_DATABASE_URL) {
       return NextResponse.json({
-        error: 'База данных не настроена',
-        details: 'Переменные окружения POSTGRES_URL_NON_POOLING или POSTGRES_URL не найдены. Настройте Vercel Postgres в панели управления.',
-        setup_required: true
+        error: 'Database not configured',
+        message: 'POSTGRES_URL, DATABASE_URL, or PRISMA_DATABASE_URL environment variable not found'
       }, { status: 503 });
     }
 
@@ -30,13 +29,15 @@ export async function POST() {
 
 export async function GET() {
   try {
-    // Проверяем наличие переменных окружения
-    if (!process.env.POSTGRES_URL_NON_POOLING && !process.env.POSTGRES_URL) {
-      return NextResponse.json({
-        error: 'База данных не настроена',
-        details: 'Переменные окружения POSTGRES_URL_NON_POOLING или POSTGRES_URL не найдены. Настройте Vercel Postgres в панели управления.',
-        setup_required: true
-      }, { status: 503 });
+    // Проверяем наличие переменных окружения для базы данных
+    if (!process.env.POSTGRES_URL && !process.env.DATABASE_URL && !process.env.PRISMA_DATABASE_URL) {
+      return NextResponse.json(
+        { 
+          error: 'Database not configured', 
+          message: 'POSTGRES_URL, DATABASE_URL, or PRISMA_DATABASE_URL environment variable not found' 
+        }, 
+        { status: 503 }
+      );
     }
 
     // Проверяем состояние базы данных

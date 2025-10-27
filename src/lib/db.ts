@@ -10,9 +10,19 @@ let vercelClient: any = null;
 // Создаем пул подключений для локальной разработки
 let localPool: Pool | null = null;
 
-if (isProduction) {
-  vercelClient = createClient();
-} else {
+// Функция для получения клиента Vercel Postgres
+function getVercelClient() {
+  if (!vercelClient && isProduction) {
+    // Проверяем наличие переменных окружения перед созданием клиента
+    if (process.env.POSTGRES_URL_NON_POOLING || process.env.POSTGRES_URL) {
+      vercelClient = createClient();
+    }
+  }
+  return vercelClient;
+}
+
+// Инициализация локального пула только если не в production
+if (!isProduction && process.env.POSTGRES_URL) {
   localPool = new Pool({
     connectionString: process.env.POSTGRES_URL,
   });
@@ -22,9 +32,13 @@ if (isProduction) {
 async function executeSimpleQuery(query: string) {
   if (isProduction) {
     // Используем Vercel Postgres для production
+    const client = getVercelClient();
+    if (!client) {
+      throw new Error('Vercel Postgres client not available. Check environment variables.');
+    }
     try {
       console.log('Executing query on Vercel Postgres:', query.substring(0, 100) + '...');
-      const result = await vercelClient.query(query);
+      const result = await client.query(query);
       console.log('Query executed successfully, rows:', result.rows?.length || 0);
       return result;
     } catch (error) {
@@ -45,10 +59,14 @@ async function executeSimpleQuery(query: string) {
 async function executeQuery(query: string, params?: any[]) {
   if (isProduction) {
     // Используем Vercel Postgres для production
+    const client = getVercelClient();
+    if (!client) {
+      throw new Error('Vercel Postgres client not available. Check environment variables.');
+    }
     try {
       console.log('Executing parameterized query on Vercel Postgres:', query.substring(0, 100) + '...');
       console.log('Parameters:', params);
-      const result = await vercelClient.query(query, params);
+      const result = await client.query(query, params);
       console.log('Query executed successfully, rows:', result.rows?.length || 0);
       return result;
     } catch (error) {
@@ -213,8 +231,13 @@ export async function initDatabase(): Promise<void> {
       // Для Vercel Postgres используем createClient
       console.log('Initializing Vercel Postgres database...');
       
+      const client = getVercelClient();
+      if (!client) {
+        throw new Error('Vercel Postgres client not available. Check environment variables.');
+      }
+      
       // Создание таблицы shifts
-      await vercelClient.query(`
+      await client.query(`
         CREATE TABLE IF NOT EXISTS shifts (
           id SERIAL PRIMARY KEY,
           date TEXT NOT NULL,
@@ -234,7 +257,7 @@ export async function initDatabase(): Promise<void> {
       `);
 
       // Создание таблицы prices
-      await vercelClient.query(`
+      await client.query(`
         CREATE TABLE IF NOT EXISTS prices (
           id SERIAL PRIMARY KEY,
           name TEXT NOT NULL UNIQUE,
@@ -243,12 +266,12 @@ export async function initDatabase(): Promise<void> {
       `);
 
       // Проверяем, есть ли данные в таблице prices
-      const pricesResult = await vercelClient.query('SELECT COUNT(*) as count FROM prices');
+      const pricesResult = await client.query('SELECT COUNT(*) as count FROM prices');
       const pricesCount = pricesResult.rows[0].count;
 
       if (pricesCount === 0) {
         // Добавляем базовые цены
-        await vercelClient.query(`
+        await client.query(`
           INSERT INTO prices (name, price) VALUES 
           ('hourly_rate', 500),
           ('steam_bath', 1000),

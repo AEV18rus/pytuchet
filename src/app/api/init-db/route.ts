@@ -3,6 +3,15 @@ import { initDatabase } from '@/lib/db';
 
 export async function POST() {
   try {
+    // Проверяем наличие переменных окружения
+    if (!process.env.POSTGRES_URL_NON_POOLING && !process.env.POSTGRES_URL) {
+      return NextResponse.json({
+        error: 'База данных не настроена',
+        details: 'Переменные окружения POSTGRES_URL_NON_POOLING или POSTGRES_URL не найдены. Настройте Vercel Postgres в панели управления.',
+        setup_required: true
+      }, { status: 503 });
+    }
+
     console.log('Инициализация базы данных...');
     await initDatabase();
     
@@ -21,6 +30,15 @@ export async function POST() {
 
 export async function GET() {
   try {
+    // Проверяем наличие переменных окружения
+    if (!process.env.POSTGRES_URL_NON_POOLING && !process.env.POSTGRES_URL) {
+      return NextResponse.json({
+        error: 'База данных не настроена',
+        details: 'Переменные окружения POSTGRES_URL_NON_POOLING или POSTGRES_URL не найдены. Настройте Vercel Postgres в панели управления.',
+        setup_required: true
+      }, { status: 503 });
+    }
+
     // Проверяем состояние базы данных
     const { sql } = await import('@vercel/postgres');
     

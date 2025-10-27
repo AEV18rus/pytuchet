@@ -13,19 +13,35 @@ if (!isProduction) {
   });
 }
 
-// Универсальная функция для выполнения SQL запросов
-async function executeQuery(query: string, params: any[] = []) {
+// Функция для выполнения простых SQL запросов без параметров
+async function executeSimpleQuery(query: string) {
   if (isProduction) {
     // Используем Vercel Postgres для production
     try {
       console.log('Executing query on Vercel Postgres:', query.substring(0, 100) + '...');
-      const result = await sql.query(query, params);
+      // Для Vercel Postgres используем template literal
+      const result = await sql.query(query);
       console.log('Query executed successfully, rows:', result.rows.length);
       return result;
     } catch (error) {
       console.error('Vercel Postgres query error:', error);
       throw error;
     }
+  } else {
+    // Используем обычный PostgreSQL для локальной разработки
+    if (!localPool) {
+      throw new Error('Local PostgreSQL pool not initialized');
+    }
+    const result = await localPool.query(query);
+    return { rows: result.rows };
+  }
+}
+
+// Функция для выполнения SQL запросов с параметрами
+async function executeQuery(query: string, params: any[] = []) {
+  if (isProduction) {
+    // Для Vercel Postgres используем простой запрос без параметров
+    return executeSimpleQuery(query);
   } else {
     // Используем обычный PostgreSQL для локальной разработки
     if (!localPool) {
@@ -102,8 +118,13 @@ async function initPostgres() {
 // Функции для работы со сменами
 export async function getShifts(): Promise<Shift[]> {
   try {
-    const result = await executeQuery('SELECT * FROM shifts ORDER BY date DESC, id DESC');
-    return result.rows as Shift[];
+    if (isProduction) {
+      const result = await sql`SELECT * FROM shifts ORDER BY date DESC, id DESC`;
+      return result.rows as Shift[];
+    } else {
+      const result = await executeQuery('SELECT * FROM shifts ORDER BY date DESC, id DESC');
+      return result.rows as Shift[];
+    }
   } catch (error) {
     console.error('Ошибка при получении смен:', error);
     throw error;
@@ -112,10 +133,25 @@ export async function getShifts(): Promise<Shift[]> {
 
 export async function addShift(shift: Omit<Shift, 'id'>): Promise<void> {
   try {
-    await executeQuery(`
-      INSERT INTO shifts (date, hours, steam_bath, brand_steam, intro_steam, scrubbing, masters, total, hourly_rate, steam_bath_price, brand_steam_price, intro_steam_price, scrubbing_price)
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
-    `, [shift.date, shift.hours, shift.steam_bath, shift.brand_steam, shift.intro_steam, shift.scrubbing, shift.masters, shift.total, shift.hourly_rate, shift.steam_bath_price, shift.brand_steam_price, shift.intro_steam_price, shift.scrubbing_price]);
+    if (isProduction) {
+      await sql`
+        INSERT INTO shifts (
+          date, hours, steam_bath, brand_steam, intro_steam, scrubbing, masters, 
+          total, hourly_rate, steam_bath_price, brand_steam_price, intro_steam_price, scrubbing_price
+        )
+        VALUES (
+          ${shift.date}, ${shift.hours}, ${shift.steam_bath}, ${shift.brand_steam}, 
+          ${shift.intro_steam}, ${shift.scrubbing}, ${shift.masters}, ${shift.total}, 
+          ${shift.hourly_rate}, ${shift.steam_bath_price}, ${shift.brand_steam_price}, 
+          ${shift.intro_steam_price}, ${shift.scrubbing_price}
+        )
+      `;
+    } else {
+      await executeQuery(`
+        INSERT INTO shifts (date, hours, steam_bath, brand_steam, intro_steam, scrubbing, masters, total, hourly_rate, steam_bath_price, brand_steam_price, intro_steam_price, scrubbing_price)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+      `, [shift.date, shift.hours, shift.steam_bath, shift.brand_steam, shift.intro_steam, shift.scrubbing, shift.masters, shift.total, shift.hourly_rate, shift.steam_bath_price, shift.brand_steam_price, shift.intro_steam_price, shift.scrubbing_price]);
+    }
   } catch (error) {
     console.error('Ошибка при добавлении смены:', error);
     throw error;
@@ -134,8 +170,13 @@ export async function deleteShift(id: number): Promise<void> {
 // Функции для работы с ценами
 export async function getPrices(): Promise<Price[]> {
   try {
-    const result = await executeQuery('SELECT * FROM prices ORDER BY id');
-    return result.rows as Price[];
+    if (isProduction) {
+      const result = await sql`SELECT * FROM prices ORDER BY id`;
+      return result.rows as Price[];
+    } else {
+      const result = await executeQuery('SELECT * FROM prices ORDER BY id');
+      return result.rows as Price[];
+    }
   } catch (error) {
     console.error('Error getting prices:', error);
     throw error;
@@ -178,10 +219,53 @@ export async function deletePrice(id: number): Promise<void> {
 }
 
 // Инициализация базы данных
-export async function initDatabase() {
+export async function initDatabase(): Promise<void> {
   try {
-    await initPostgres();
-    await initDefaultPrices();
+    if (isProduction) {
+      // Для Vercel Postgres используем отдельные запросы
+      await sql`
+        CREATE TABLE IF NOT EXISTS shifts (
+          id SERIAL PRIMARY KEY,
+          date TEXT NOT NULL,
+          hours REAL NOT NULL,
+          steam_bath INTEGER NOT NULL DEFAULT 0,
+          brand_steam INTEGER NOT NULL DEFAULT 0,
+          intro_steam INTEGER NOT NULL DEFAULT 0,
+          scrubbing INTEGER NOT NULL DEFAULT 0,
+          masters INTEGER NOT NULL DEFAULT 1,
+          total REAL NOT NULL,
+          hourly_rate REAL NOT NULL,
+          steam_bath_price REAL NOT NULL,
+          brand_steam_price REAL NOT NULL,
+          intro_steam_price REAL NOT NULL,
+          scrubbing_price REAL NOT NULL
+        )
+      `;
+
+      await sql`
+        CREATE TABLE IF NOT EXISTS prices (
+          id SERIAL PRIMARY KEY,
+          name TEXT NOT NULL UNIQUE,
+          price REAL NOT NULL
+        )
+      `;
+
+      // Добавляем дефолтные цены если их нет
+      const pricesResult = await sql`SELECT COUNT(*) as count FROM prices`;
+      if (pricesResult.rows[0].count === 0) {
+        await sql`INSERT INTO prices (name, price) VALUES ('Почасовая ставка', 400)`;
+        await sql`INSERT INTO prices (name, price) VALUES ('Путевое парение', 3500)`;
+        await sql`INSERT INTO prices (name, price) VALUES ('Фирменное парение', 4200)`;
+        await sql`INSERT INTO prices (name, price) VALUES ('Ознакомительное парение', 2500)`;
+        await sql`INSERT INTO prices (name, price) VALUES ('Скрабирование', 1200)`;
+      }
+    } else {
+      // Для локальной разработки используем старый метод
+      await initPostgres();
+      await initDefaultPrices();
+    }
+
+    console.log('PostgreSQL tables initialized successfully');
   } catch (error) {
     console.error('Ошибка при инициализации базы данных:', error);
     throw error;

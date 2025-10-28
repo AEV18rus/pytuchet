@@ -1,31 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-
-// Простое хранилище логов в памяти (в продакшене лучше использовать базу данных)
-let logs: Array<{
-  timestamp: string;
-  level: 'info' | 'error' | 'warning';
-  message: string;
-  details?: any;
-}> = [];
-
-// Функция для добавления лога
-export function addLog(level: 'info' | 'error' | 'warning', message: string, details?: any) {
-  const logEntry = {
-    timestamp: new Date().toISOString(),
-    level,
-    message,
-    details
-  };
-  
-  logs.push(logEntry);
-  
-  // Ограничиваем количество логов (последние 1000)
-  if (logs.length > 1000) {
-    logs = logs.slice(-1000);
-  }
-  
-  console.log(`[${level.toUpperCase()}] ${message}`, details || '');
-}
+import { getLogs, addLog, clearLogs } from '@/lib/logging';
 
 // GET - получить логи
 export async function GET(request: NextRequest) {
@@ -33,12 +7,12 @@ export async function GET(request: NextRequest) {
     // Простая проверка авторизации (в продакшене нужна более надежная)
     const authHeader = request.headers.get('authorization');
     
-    // Возвращаем логи (сортируем по времени, новые сверху)
-    const sortedLogs = [...logs].reverse();
+    // Получаем логи
+    const logs = getLogs();
     
     return NextResponse.json({
       success: true,
-      logs: sortedLogs,
+      logs: logs,
       total: logs.length
     });
   } catch (error) {
@@ -53,7 +27,7 @@ export async function GET(request: NextRequest) {
 // DELETE - очистить логи
 export async function DELETE(request: NextRequest) {
   try {
-    logs = [];
+    clearLogs();
     
     addLog('info', 'Логи очищены администратором');
     
@@ -69,6 +43,3 @@ export async function DELETE(request: NextRequest) {
     );
   }
 }
-
-// Экспортируем функцию для использования в других частях приложения
-export { addLog as logToSystem };

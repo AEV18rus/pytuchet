@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import crypto from 'crypto';
 import { getUserByTelegramId, createUser, updateUser } from '@/lib/db';
 import { AuthenticatedUser } from '@/lib/auth-server';
-import { addLog } from '../../admin/logs/route';
+import { addLog } from '@/lib/logging';
 import { validate, validate3rd } from '@tma.js/init-data-node';
 
 // Диагностические функции для отладки Telegram подписи

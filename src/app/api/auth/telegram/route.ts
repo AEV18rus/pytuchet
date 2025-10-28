@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import crypto from 'crypto';
 import { getUserByTelegramId, createUser, updateUser } from '@/lib/db';
 import { AuthenticatedUser } from '@/lib/auth-server';
-import { logToSystem } from '../../admin/logs/route';
+import { addLog } from '../../admin/logs/route';
 import { validate, validate3rd } from '@tma.js/init-data-node';
 
 // Диагностические функции для отладки Telegram подписи
@@ -31,7 +31,7 @@ function debugTelegramSignature(initDataRaw: string, botTokenRaw: string, expect
   const initData = typeof initDataRaw === 'string' ? initDataRaw : String(initDataRaw);
   const botToken = botTokenRaw.trim();
 
-  logToSystem('info', '🔍 ДИАГНОСТИКА Telegram подписи', {
+  addLog('info', '🔍 ДИАГНОСТИКА Telegram подписи', {
     expected: expected,
     botTokenLength: botToken.length,
     initDataLength: initData.length
@@ -41,7 +41,7 @@ function debugTelegramSignature(initDataRaw: string, botTokenRaw: string, expect
   const hasSignature = params.has('signature');
   const hasHash = params.has('hash');
   
-  logToSystem('info', '🔍 Режим проверки в debug', { 
+  addLog('info', '🔍 Режим проверки в debug', { 
     hasSignature, 
     hasHash,
     mode: hasSignature ? 'validate3rd (новый)' : 'validate (старый)'
@@ -56,20 +56,20 @@ function debugTelegramSignature(initDataRaw: string, botTokenRaw: string, expect
       const botId = getBotIdFromToken(botToken);
       validate3rd(initData, botId);
       validationResult = true;
-      logToSystem('info', '✅ DEBUG: validate3rd успешно', { botId });
+      addLog('info', '✅ DEBUG: validate3rd успешно', { botId });
     } else {
       // Старый режим: используем validate с bot token
       validate(initData, botToken);
       validationResult = true;
-      logToSystem('info', '✅ DEBUG: validate успешно');
+      addLog('info', '✅ DEBUG: validate успешно');
     }
   } catch (error) {
     validationResult = false;
     errorMessage = error instanceof Error ? error.message : String(error);
-    logToSystem('info', '❌ DEBUG: Ошибка проверки', { error: errorMessage });
+    addLog('info', '❌ DEBUG: Ошибка проверки', { error: errorMessage });
   }
 
-  logToSystem('info', '🔍 РЕЗУЛЬТАТ диагностики', {
+  addLog('info', '🔍 РЕЗУЛЬТАТ диагностики', {
     validationResult,
     errorMessage,
     hasSignature,
@@ -88,16 +88,16 @@ function debugTelegramSignature(initDataRaw: string, botTokenRaw: string, expect
 // Функция для проверки подписи Telegram initData
 function verifyTelegramWebAppData(initData: string, botToken: string): any {
   // Логируем исходные данные
-  logToSystem('info', '🧾 RAW initData FULL STRING', { initData: initData });
+  addLog('info', '🧾 RAW initData FULL STRING', { initData: initData });
   
   const params = new URLSearchParams(initData);
-  logToSystem('info', '🔑 ALL KEYS from initData', { keys: Array.from(params.keys()) });
+  addLog('info', '🔑 ALL KEYS from initData', { keys: Array.from(params.keys()) });
   
   // Проверяем наличие signature для определения режима проверки
   const hasSignature = params.has('signature');
   const hasHash = params.has('hash');
   
-  logToSystem('info', '🔍 Режим проверки подписи', { 
+  addLog('info', '🔍 Режим проверки подписи', { 
     hasSignature, 
     hasHash,
     mode: hasSignature ? 'validate3rd (новый)' : 'validate (старый)'
@@ -107,23 +107,23 @@ function verifyTelegramWebAppData(initData: string, botToken: string): any {
     if (hasSignature) {
       // Новый режим: используем validate3rd с bot_id
       const botId = getBotIdFromToken(botToken);
-      logToSystem('info', '🤖 Используем validate3rd', { botId });
+      addLog('info', '🤖 Используем validate3rd', { botId });
       
       // validate3rd проверяет подпись и не возвращает данные
       validate3rd(initData, botId);
       
-      logToSystem('info', '✅ validate3rd успешно');
+      addLog('info', '✅ validate3rd успешно');
     } else {
       // Старый режим: используем validate с bot token
-      logToSystem('info', '🔑 Используем validate (старый режим)');
+      addLog('info', '🔑 Используем validate (старый режим)');
       
       // validate проверяет подпись и не возвращает данные
       validate(initData, botToken);
       
-      logToSystem('info', '✅ validate успешно');
+      addLog('info', '✅ validate успешно');
     }
   } catch (error) {
-    logToSystem('error', 'Ошибка проверки подписи Telegram', {
+    addLog('error', 'Ошибка проверки подписи Telegram', {
       error: error instanceof Error ? error.message : String(error),
       hasSignature,
       hasHash,
@@ -170,7 +170,7 @@ export async function POST(request: NextRequest) {
     const { initData } = body;
 
     // Логируем начало аутентификации
-    logToSystem('info', 'Начало аутентификации Telegram', {
+    addLog('info', 'Начало аутентификации Telegram', {
       hasInitData: !!initData,
       initDataType: typeof initData,
       initDataLength: initData ? initData.length : 0,
@@ -182,7 +182,7 @@ export async function POST(request: NextRequest) {
     
     if (!initData) {
       console.log('Auth failed: initData отсутствует');
-      logToSystem('error', 'Ошибка аутентификации: initData отсутствует', {
+      addLog('error', 'Ошибка аутентификации: initData отсутствует', {
         requestBody: body,
         ip: requestIP,
         userAgent,
@@ -205,7 +205,7 @@ export async function POST(request: NextRequest) {
     
     // Валидация формата токена Telegram (должен быть вида: 123456789:ABC-DEF1234ghIkl-zyx57W2v1u123ew11)
     if (!/^\d+:[\w-]{35}$/.test(botToken)) {
-      logToSystem('error', 'Некорректный формат TELEGRAM_BOT_TOKEN', { 
+      addLog('error', 'Некорректный формат TELEGRAM_BOT_TOKEN', { 
         tokenLength: botToken.length,
         tokenFormat: botToken.replace(/:.+/, ':***') 
       });
@@ -221,11 +221,11 @@ export async function POST(request: NextRequest) {
     // Проверяем подпись Telegram
     let userData;
     try {
-      logToSystem('info', '🔐 Вызываем verifyTelegramWebAppData', { initDataLength: initData.length });
+      addLog('info', '🔐 Вызываем verifyTelegramWebAppData', { initDataLength: initData.length });
       userData = verifyTelegramWebAppData(initData, botToken);
       // Логируем userData без персональных данных (photo_url)
       const { photo_url, ...safeUserData } = userData;
-      logToSystem('info', '✅ verifyTelegramWebAppData успешно выполнена', { userData: safeUserData });
+      addLog('info', '✅ verifyTelegramWebAppData успешно выполнена', { userData: safeUserData });
     } catch (error) {
       console.log('Auth failed:', error instanceof Error ? error.message : 'Unknown error');
       return NextResponse.json({ error: 'Неверная подпись Telegram' }, { status: 401 });
@@ -264,7 +264,7 @@ export async function POST(request: NextRequest) {
     
     console.log('Auth success for user:', user.telegram_id);
     
-    logToSystem('info', 'Успешная аутентификация Telegram', {
+    addLog('info', 'Успешная аутентификация Telegram', {
       userId: user.id,
       telegramId: user.telegram_id,
       username: user.username,
@@ -291,7 +291,7 @@ export async function POST(request: NextRequest) {
   } catch (error) {
     console.error('Ошибка авторизации:', error);
     
-    logToSystem('error', 'Ошибка аутентификации Telegram', {
+    addLog('error', 'Ошибка аутентификации Telegram', {
       error: error instanceof Error ? error.message : String(error),
       stack: error instanceof Error ? error.stack : undefined
     });

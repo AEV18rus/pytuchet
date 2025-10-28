@@ -3,6 +3,10 @@
 import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
+import { useRouter } from 'next/navigation';
+import UserGreeting from '@/components/UserGreeting';
+import { useTelegramAuth } from '@/hooks/useTelegramAuth';
+import { getAuthHeaders, isTelegramWebApp } from '@/lib/auth';
 
 interface Shift {
   id?: number;
@@ -28,9 +32,12 @@ interface Price {
 }
 
 export default function HomePage() {
+  const router = useRouter();
+  const { isAuthenticated, user, loading: authLoading } = useTelegramAuth();
   const [shifts, setShifts] = useState<Shift[]>([]);
   const [prices, setPrices] = useState<Price[]>([]);
   const [loading, setLoading] = useState(true);
+  const [expandedRows, setExpandedRows] = useState<Set<number>>(new Set());
   const [newShift, setNewShift] = useState<Omit<Shift, 'id' | 'total'>>({
     date: new Date().toISOString().split('T')[0],
     hours: 0,
@@ -58,22 +65,42 @@ export default function HomePage() {
   const loadData = async () => {
     try {
       setLoading(true);
+      
+      // Создаем контроллер для отмены запросов по таймауту
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 15000); // 15 секунд таймаут
+
+      const authHeaders = getAuthHeaders();
+
       const [shiftsResponse, pricesResponse] = await Promise.all([
-        fetch('/api/shifts'),
-        fetch('/api/prices')
+        fetch('/api/shifts', { 
+          signal: controller.signal,
+          headers: authHeaders
+        }),
+        fetch('/api/prices', { signal: controller.signal })
       ]);
+
+      clearTimeout(timeoutId);
 
       if (shiftsResponse.ok) {
         const shiftsData = await shiftsResponse.json();
         setShifts(shiftsData);
+      } else {
+        console.error('Ошибка загрузки смен:', shiftsResponse.status);
       }
 
       if (pricesResponse.ok) {
         const pricesData = await pricesResponse.json();
         setPrices(pricesData);
+      } else {
+        console.error('Ошибка загрузки цен:', pricesResponse.status);
       }
     } catch (error) {
-      console.error('Ошибка при загрузке данных:', error);
+      if (error instanceof Error && error.name === 'AbortError') {
+        console.error('Запрос отменен по таймауту');
+      } else {
+        console.error('Ошибка при загрузке данных:', error);
+      }
     } finally {
       setLoading(false);
     }
@@ -114,11 +141,13 @@ export default function HomePage() {
     try {
       const total = calculateTotal(newShift);
       const shiftData = { ...newShift, total };
+      const authHeaders = getAuthHeaders();
 
       const response = await fetch('/api/shifts', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          ...authHeaders,
         },
         body: JSON.stringify(shiftData),
       });
@@ -150,8 +179,10 @@ export default function HomePage() {
     if (!confirm('Вы уверены, что хотите удалить эту смену?')) return;
 
     try {
+      const authHeaders = getAuthHeaders();
       const response = await fetch(`/api/shifts/${id}`, {
-        method: 'DELETE'
+        method: 'DELETE',
+        headers: authHeaders
       });
 
       if (response.ok) {
@@ -166,9 +197,30 @@ export default function HomePage() {
     }
   };
 
+  const toggleRowExpansion = (shiftId: number) => {
+    setExpandedRows(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(shiftId)) {
+        newSet.delete(shiftId);
+      } else {
+        newSet.add(shiftId);
+      }
+      return newSet;
+    });
+  };
+
   // Расчет общей статистики
   const totalHours = shifts.reduce((sum, shift) => sum + shift.hours, 0);
   const totalEarnings = shifts.reduce((sum, shift) => sum + shift.total, 0);
+
+  // Проверка регистрации пользователя (только для Telegram WebApp)
+  useEffect(() => {
+    if (!authLoading && isAuthenticated && user && !user.display_name && isTelegramWebApp()) {
+      // Если пользователь авторизован через Telegram, но не зарегистрирован (нет display_name), перенаправляем на регистрацию
+      router.push('/register');
+      return;
+    }
+  }, [authLoading, isAuthenticated, user, router]);
 
   useEffect(() => {
     loadData();
@@ -619,6 +671,107 @@ export default function HomePage() {
           border-bottom: none;
         }
 
+        .delete-btn {
+          background: transparent;
+          border: none;
+          border-radius: 8px;
+          width: 56px;
+          height: 56px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          cursor: pointer;
+          transition: all 0.2s ease;
+          padding: 8px;
+        }
+
+        .delete-btn:hover {
+          background: rgba(156, 163, 175, 0.2);
+          transform: scale(1.05);
+        }
+
+        .delete-btn img {
+            opacity: 0.6;
+            transition: opacity 0.2s ease;
+          }
+
+          .delete-btn:hover img {
+            opacity: 0.8;
+          }
+
+
+
+        /* Стили для раскрывающихся строк */
+        .shift-row {
+          transition: background-color 0.2s ease;
+        }
+
+        .shift-row:hover {
+          background-color: rgba(139, 69, 19, 0.05);
+        }
+
+        .shift-row.expanded {
+          background-color: rgba(139, 69, 19, 0.1);
+        }
+
+        .expand-icon {
+          font-size: 12px;
+          color: var(--primary-color);
+          transition: transform 0.2s ease;
+          display: inline-block;
+          width: 16px;
+        }
+
+        .shift-details-row {
+          background-color: rgba(139, 69, 19, 0.02);
+          border-top: 1px solid rgba(139, 69, 19, 0.1);
+        }
+
+        .shift-details-content {
+          padding: 20px;
+          animation: slideDown 0.3s ease-out;
+        }
+
+        @keyframes slideDown {
+          from {
+            opacity: 0;
+            transform: translateY(-10px);
+          }
+          to {
+            opacity: 1;
+            transform: translateY(0);
+          }
+        }
+
+        .details-grid {
+          display: grid;
+          grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+          gap: 15px;
+        }
+
+        .detail-item {
+          display: flex;
+          justify-content: flex-start;
+          align-items: center;
+          gap: 8px;
+          padding: 8px 12px;
+          background-color: rgba(255, 255, 255, 0.5);
+          border-radius: 6px;
+          border: 1px solid rgba(139, 69, 19, 0.1);
+        }
+
+        .detail-label {
+          font-weight: 500;
+          color: #666;
+          font-size: 14px;
+        }
+
+        .detail-value {
+          font-weight: 600;
+          color: var(--primary-color);
+          font-size: 14px;
+        }
+
         @media (max-width: 768px) {
           .container {
             margin: 10px;
@@ -626,8 +779,8 @@ export default function HomePage() {
           }
 
           .header {
-            padding: 30px 20px;
-          }
+                padding: 5px 20px !important;
+            }
 
           .header-content {
             flex-direction: column;
@@ -660,13 +813,85 @@ export default function HomePage() {
             align-items: stretch;
           }
 
+
+
+          /* Мобильные стили для таблицы */
           .shifts-table {
             font-size: 14px;
           }
 
           .shifts-table th,
           .shifts-table td {
-            padding: 10px 8px;
+            padding: 8px 4px;
+            font-size: 12px;
+          }
+
+          .shifts-table th:first-child,
+          .shifts-table td:first-child {
+            padding-left: 8px;
+          }
+
+          .shifts-table th:last-child,
+          .shifts-table td:last-child {
+            padding-right: 8px;
+          }
+
+          /* Мобильные стили для деталей */
+          .details-grid {
+            grid-template-columns: 1fr;
+            gap: 8px;
+          }
+
+          .shift-details-content {
+            padding: 12px;
+            margin: 0 -4px;
+          }
+
+          .detail-item {
+            padding: 8px;
+            font-size: 12px;
+            border-radius: 6px;
+          }
+
+          .detail-label {
+            font-size: 11px;
+            margin-bottom: 2px;
+          }
+
+          .detail-value {
+            font-size: 13px;
+            font-weight: 700;
+          }
+
+          .expand-icon {
+            font-size: 10px;
+          }
+
+          /* Адаптация для очень маленьких экранов */
+          @media (max-width: 480px) {
+            .shifts-table th,
+            .shifts-table td {
+              padding: 6px 2px;
+              font-size: 11px;
+            }
+
+            .shift-details-content {
+              padding: 10px;
+              margin: 0 -2px;
+            }
+
+            .detail-item {
+              padding: 6px;
+              font-size: 11px;
+            }
+
+            .detail-label {
+              font-size: 10px;
+            }
+
+            .detail-value {
+              font-size: 12px;
+            }
           }
         }
       `}</style>
@@ -674,7 +899,7 @@ export default function HomePage() {
       <div className="container">
         <div className="header">
           <div className="header-content">
-            <div className="logo">
+            <div className="logo" onClick={() => router.push('/admin')} style={{cursor: 'pointer'}}>
               <Image 
                 src="/logo.svg" 
                 alt="Логотип" 
@@ -690,6 +915,7 @@ export default function HomePage() {
         </div>
 
         <div className="content">
+          <UserGreeting />
           {/* Форма добавления новой смены */}
           <div className="form-section">
             <h2>Добавить новую смену</h2>
@@ -796,9 +1022,6 @@ export default function HomePage() {
                 >
                   Добавить смену
                 </button>
-                <Link href="/pricing" className="btn" style={{textDecoration: 'none', display: 'inline-flex', alignItems: 'center', justifyContent: 'center'}}>
-                  Прайс
-                </Link>
               </div>
             </div>
           </div>
@@ -813,48 +1036,86 @@ export default function HomePage() {
                 <div>Добавьте первую смену, чтобы начать учёт</div>
               </div>
             ) : (
-              <div style={{overflowX: 'auto'}}>
-                <table className="shifts-table">
-                  <thead>
-                    <tr>
-                      <th>Дата</th>
-                      <th>Часы</th>
-                      <th>П</th>
-                      <th>Ф</th>
-                      <th>О</th>
-                      <th>С</th>
-                      <th>Мастера</th>
-                      <th>Сумма</th>
-                      <th>Действия</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {shifts.map((shift) => (
-                      <tr key={shift.id}>
-                        <td>{new Date(shift.date).toLocaleDateString('ru-RU')}</td>
-                        <td>{shift.hours}ч</td>
-                        <td>{shift.steam_bath}</td>
-                        <td>{shift.brand_steam}</td>
-                        <td>{shift.intro_steam}</td>
-                        <td>{shift.scrubbing}</td>
-                        <td>{shift.masters}</td>
-                        <td style={{fontWeight: '600', color: 'var(--primary-color)'}}>
-                          {shift.total.toLocaleString()}₽
-                        </td>
-                        <td>
-                          <button
-                            className="btn btn-danger"
-                            style={{padding: '8px 16px', fontSize: '14px'}}
-                            onClick={() => shift.id && handleDeleteShift(shift.id)}
-                          >
-                            Удалить
-                          </button>
-                        </td>
+              <>
+                {/* Компактная таблица с раскрывающимися деталями */}
+                <div style={{overflowX: 'auto'}}>
+                  <table className="shifts-table">
+                    <thead>
+                      <tr>
+                        <th>Дата</th>
+                        <th>Сумма</th>
+                        <th>Действия</th>
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+                    </thead>
+                    <tbody>
+                      {shifts.map((shift) => (
+                        <React.Fragment key={shift.id}>
+                          <tr 
+                            className={`shift-row ${expandedRows.has(shift.id!) ? 'expanded' : ''}`}
+                            onClick={() => shift.id && toggleRowExpansion(shift.id)}
+                            style={{cursor: 'pointer'}}
+                          >
+                            <td>
+                              <div style={{display: 'flex', alignItems: 'center', gap: '8px'}}>
+                                <span className="expand-icon">
+                                  {expandedRows.has(shift.id!) ? '▼' : '▶'}
+                                </span>
+                                {new Date(shift.date).toLocaleDateString('ru-RU')}
+                              </div>
+                            </td>
+                            <td style={{fontWeight: '600', color: 'var(--primary-color)'}}>
+                              {shift.total.toLocaleString()}₽
+                            </td>
+                            <td onClick={(e) => e.stopPropagation()}>
+                              <button
+                                className="delete-btn"
+                                onClick={() => shift.id && handleDeleteShift(shift.id)}
+                                title="Удалить смену"
+                              >
+                                <img src="/trash.svg" alt="Удалить" width="28" height="28" />
+                              </button>
+                            </td>
+                          </tr>
+                          {expandedRows.has(shift.id!) && (
+                            <tr className="shift-details-row">
+                              <td colSpan={3}>
+                                <div className="shift-details-content">
+                                  <div className="details-grid">
+                                    <div className="detail-item">
+                                      <span className="detail-label">Часы работы:</span>
+                                      <span className="detail-value">{shift.hours}ч</span>
+                                    </div>
+                                    <div className="detail-item">
+                                      <span className="detail-label">Мастера:</span>
+                                      <span className="detail-value">{shift.masters}</span>
+                                    </div>
+                                    <div className="detail-item">
+                                      <span className="detail-label">Путевое:</span>
+                                      <span className="detail-value">{shift.steam_bath}</span>
+                                    </div>
+                                    <div className="detail-item">
+                                      <span className="detail-label">Фирменное:</span>
+                                      <span className="detail-value">{shift.brand_steam}</span>
+                                    </div>
+                                    <div className="detail-item">
+                                      <span className="detail-label">Ознакомительное:</span>
+                                      <span className="detail-value">{shift.intro_steam}</span>
+                                    </div>
+                                    <div className="detail-item">
+                                      <span className="detail-label">Скрабирование:</span>
+                                      <span className="detail-value">{shift.scrubbing}</span>
+                                    </div>
+                                  </div>
+                                </div>
+                              </td>
+                            </tr>
+                          )}
+                        </React.Fragment>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </>
             )}
           </div>
         </div>

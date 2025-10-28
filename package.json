@@ -12,6 +12,7 @@
     "view-db": "node scripts/view-database.js"
   },
   "dependencies": {
+    "@tma.js/init-data-node": "^2.0.3",
     "@types/pg": "^8.15.5",
     "@vercel/postgres": "^0.10.0",
     "dotenv": "^17.2.3",

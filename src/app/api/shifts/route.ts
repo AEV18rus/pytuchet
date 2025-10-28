@@ -1,12 +1,16 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getShifts, addShift, initDatabase, getPrices } from '@/lib/db';
+import { getShifts, addShift, getPrices } from '@/lib/db';
+import { requireAuth } from '@/lib/auth-server';
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
-    await initDatabase();
-    const shifts = await getShifts();
+    const user = await requireAuth(request);
+    const shifts = await getShifts(user.id);
     return NextResponse.json(shifts);
   } catch (error) {
+    if (error instanceof Error && error.message === 'Unauthorized') {
+      return NextResponse.json({ error: 'Требуется авторизация' }, { status: 401 });
+    }
     console.error('Ошибка при получении смен:', error);
     return NextResponse.json({ error: 'Ошибка сервера' }, { status: 500 });
   }
@@ -14,6 +18,7 @@ export async function GET() {
 
 export async function POST(request: NextRequest) {
   try {
+    const user = await requireAuth(request);
     const { date, hours, steam_bath, brand_steam, intro_steam, scrubbing, masters, total } = await request.json();
     
     if (!date || hours === undefined || total === undefined) {
@@ -28,7 +33,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Общая сумма должна быть положительным числом' }, { status: 400 });
     }
     
-    await initDatabase();
+
     
     // Получаем текущие цены для сохранения со сменой
     const prices = await getPrices();
@@ -57,6 +62,7 @@ export async function POST(request: NextRequest) {
     });
     
     await addShift({
+      user_id: user.id,
       date,
       hours,
       steam_bath: steam_bath || 0,
@@ -77,6 +83,9 @@ export async function POST(request: NextRequest) {
       shift: { date, hours, steam_bath, brand_steam, intro_steam, scrubbing, masters, total }
     });
   } catch (error) {
+    if (error instanceof Error && error.message === 'Unauthorized') {
+      return NextResponse.json({ error: 'Требуется авторизация' }, { status: 401 });
+    }
     console.error('Ошибка при добавлении смены:', error);
     return NextResponse.json({ error: 'Ошибка сервера' }, { status: 500 });
   }

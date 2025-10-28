@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { updatePrice, deletePrice, initDatabase } from '@/lib/db';
+import { updatePrice, deletePrice } from '@/lib/db';
 
 export async function PUT(
   request: NextRequest,
@@ -22,7 +22,6 @@ export async function PUT(
       return NextResponse.json({ error: 'Цена должна быть положительным числом' }, { status: 400 });
     }
     
-    await initDatabase();
     await updatePrice(id, { name, price });
     
     return NextResponse.json({ 
@@ -46,7 +45,6 @@ export async function DELETE(
       return NextResponse.json({ error: 'Некорректный ID' }, { status: 400 });
     }
     
-    await initDatabase();
     await deletePrice(id);
     
     return NextResponse.json({ message: 'Цена удалена успешно' });

@@ -50,7 +50,7 @@ body {
 .header {
     background: linear-gradient(135deg, var(--primary-color) 0%, var(--secondary-color) 100%);
     color: var(--accent-color);
-    padding: 18px;
+    padding: 5px !important;
     text-align: center;
 }
 
@@ -218,7 +218,7 @@ body {
     }
     
     .header {
-        padding: 20px;
+        padding: 5px !important;
     }
     
     .header-content {

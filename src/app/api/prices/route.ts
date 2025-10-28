@@ -1,9 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getPrices, addPrice, initDatabase } from '@/lib/db';
+import { getPrices, addPrice } from '@/lib/db';
 
 export async function GET() {
   try {
-    await initDatabase();
     const prices = await getPrices();
     return NextResponse.json(prices);
   } catch (error) {
@@ -24,7 +23,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Цена должна быть положительным числом' }, { status: 400 });
     }
     
-    await initDatabase();
+
     await addPrice({ name, price });
     
     return NextResponse.json({ 

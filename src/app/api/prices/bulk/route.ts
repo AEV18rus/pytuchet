@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { addPrice, updatePrice, getPrices, initDatabase } from '@/lib/db';
+import { addPrice, updatePrice, getPrices } from '@/lib/db';
 
 interface Prices {
   hourly_rate: number;
@@ -30,8 +30,6 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    await initDatabase();
-    
     // Получаем существующие цены
     const existingPrices = await getPrices();
     const existingPricesMap = new Map(existingPrices.map(p => [p.name, p]));
@@ -71,8 +69,6 @@ export async function PUT(request: NextRequest) {
       }
     }
 
-    await initDatabase();
-    
     // Получаем существующие цены
     const existingPrices = await getPrices();
     const existingPricesMap = new Map(existingPrices.map(p => [p.name, p]));
@@ -101,7 +97,6 @@ export async function PUT(request: NextRequest) {
 
 export async function GET() {
   try {
-    await initDatabase();
     const prices = await getPrices();
     
     // Преобразуем в формат, ожидаемый фронтендом

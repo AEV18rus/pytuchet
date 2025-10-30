@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Test Payouts API - Optimized</title>
+</head>
+<body>
+    <h1>Test Payouts API - Optimized Version</h1>
+    <div id="result">Loading...</div>
+    <div id="timing"></div>
+    
+    <script>
+        async function testPayoutsAPI() {
+            const startTime = performance.now();
+            try {
+                console.log('Fetching payouts...');
+                const response = await fetch('/api/payouts', {
+                    headers: {
+                        'x-telegram-id': '87654321'
+                    }
+                });
+                
+                const endTime = performance.now();
+                const duration = endTime - startTime;
+                
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+                
+                const data = await response.json();
+                console.log('Payouts data:', data);
+                
+                document.getElementById('result').innerHTML = `
+                    <h2>Success!</h2>
+                    <p><strong>Response time:</strong> ${duration.toFixed(2)}ms</p>
+                    <p><strong>Months found:</strong> ${data.months ? data.months.length : 0}</p>
+                    <pre>${JSON.stringify(data, null, 2)}</pre>
+                `;
+                
+                document.getElementById('timing').innerHTML = `
+                    <h3>Performance:</h3>
+                    <p>API response time: ${duration.toFixed(2)}ms</p>
+                `;
+            } catch (error) {
+                const endTime = performance.now();
+                const duration = endTime - startTime;
+                
+                console.error('Error:', error);
+                document.getElementById('result').innerHTML = `
+                    <h2>Error!</h2>
+                    <p><strong>Time to error:</strong> ${duration.toFixed(2)}ms</p>
+                    <p>${error.message}</p>
+                `;
+            }
+        }
+        
+        // Test the API when page loads
+        testPayoutsAPI();
+    </script>
+</body>
+</html>

@@ -16,6 +16,7 @@ interface Shift {
   brand_steam: number;
   intro_steam: number;
   scrubbing: number;
+  zaparnik: number;
   masters: number;
   total: number;
   hourly_rate?: number;
@@ -23,6 +24,7 @@ interface Shift {
   brand_steam_price?: number;
   intro_steam_price?: number;
   scrubbing_price?: number;
+  zaparnik_price?: number;
 }
 
 interface Price {
@@ -45,6 +47,7 @@ export default function HomePage() {
     brand_steam: 0,
     intro_steam: 0,
     scrubbing: 0,
+    zaparnik: 0,
     masters: 2
   });
 
@@ -57,6 +60,7 @@ export default function HomePage() {
       brand_steam: 0,
       intro_steam: 0,
       scrubbing: 0,
+      zaparnik: 0,
       masters: 2
     });
   }, []);
@@ -119,6 +123,7 @@ export default function HomePage() {
     const brandSteamPrice = getPrice('Фирменное парение');
     const introSteamPrice = getPrice('Ознакомительное парение');
     const scrubbingPrice = getPrice('Скрабирование');
+    const zaparnikPrice = getPrice('Запарник');
 
     const hourlyTotal = shift.hours * hourlyRate;
     
@@ -127,7 +132,8 @@ export default function HomePage() {
       shift.steam_bath * steamBathPrice +
       shift.brand_steam * brandSteamPrice +
       shift.intro_steam * introSteamPrice +
-      shift.scrubbing * scrubbingPrice
+      shift.scrubbing * scrubbingPrice +
+      shift.zaparnik * zaparnikPrice
     );
     
     // 40% от суммы услуг, деленное на количество мастеров
@@ -162,6 +168,7 @@ export default function HomePage() {
           brand_steam: 0,
           intro_steam: 0,
           scrubbing: 0,
+          zaparnik: 0,
           masters: 1
         });
       } else {
@@ -622,19 +629,19 @@ export default function HomePage() {
         .empty-state {
           text-align: center;
           padding: 60px 20px;
-          color: var(--secondary-color);
-        }
-
-        .empty-icon {
-          font-size: 4em;
-          margin-bottom: 20px;
+          color: #8B6B4B;
+          background: var(--background-card);
+          border-radius: 12px;
+          box-shadow: 0 4px 12px rgba(74, 43, 27, 0.08);
+          margin: 20px 0;
         }
 
         .empty-title {
-          font-size: 1.5em;
-          font-weight: 600;
-          margin-bottom: 10px;
-          color: var(--primary-color);
+          font-size: 1.4em;
+          font-weight: 500;
+          margin-bottom: 12px;
+          color: #8B6B4B;
+          line-height: 1.4;
         }
 
         .shifts-table {
@@ -932,7 +939,7 @@ export default function HomePage() {
                 />
               </div>
               <div className="input-group">
-                <label className="input-label">Часы работы</label>
+                <label className="input-label">Часы работы ({getPrice('Почасовая ставка')}₽)</label>
                 <input
                   className="input-field"
                   type="number"
@@ -1002,6 +1009,17 @@ export default function HomePage() {
                   placeholder=""
                 />
               </div>
+              <div className="input-group">
+                <label className="input-label">Запарник ({getPrice('Запарник')}₽)</label>
+                <input
+                  className="input-field"
+                  type="number"
+                  min="0"
+                  value={newShift.zaparnik === 0 ? '' : newShift.zaparnik.toString()}
+                  onChange={(e) => setNewShift({ ...newShift, zaparnik: Number(e.target.value) || 0 })}
+                  placeholder=""
+                />
+              </div>
             </div>
             
             <div className="form-footer">
@@ -1022,6 +1040,12 @@ export default function HomePage() {
                 >
                   Добавить смену
                 </button>
+                <button 
+                  className="btn" 
+                  onClick={() => window.location.href = '/payouts'}
+                >
+                  Выплаты
+                </button>
               </div>
             </div>
           </div>
@@ -1031,8 +1055,7 @@ export default function HomePage() {
             <h2>История смен</h2>
             {shifts.length === 0 ? (
               <div className="empty-state">
-                <div className="empty-icon">🛁</div>
-                <div className="empty-title">Смены не найдены</div>
+                <div className="empty-title">Пока здесь пусто</div>
                 <div>Добавьте первую смену, чтобы начать учёт</div>
               </div>
             ) : (
@@ -1104,6 +1127,10 @@ export default function HomePage() {
                                     <div className="detail-item">
                                       <span className="detail-label">Скрабирование:</span>
                                       <span className="detail-value">{shift.scrubbing}</span>
+                                    </div>
+                                    <div className="detail-item">
+                                      <span className="detail-label">Запарник:</span>
+                                      <span className="detail-value">{shift.zaparnik}</span>
                                     </div>
                                   </div>
                                 </div>

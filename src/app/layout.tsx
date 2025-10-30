@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import "./globals.css";
+import TelegramWebApp from "@/components/TelegramWebApp";
 
 export const metadata: Metadata = {
   title: "Путёвой учёт",
@@ -12,11 +13,12 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="ru">
+    <html lang="ru" suppressHydrationWarning>
       <head>
         <script src="https://telegram.org/js/telegram-web-app.js"></script>
       </head>
       <body>
+        <TelegramWebApp />
         <main>
           {children}
         </main>

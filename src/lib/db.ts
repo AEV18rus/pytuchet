@@ -106,6 +106,7 @@ export interface Shift {
   brand_steam: number;
   intro_steam: number;
   scrubbing: number;
+  zaparnik: number;
   masters: number;
   total: number;
   // Цены на момент создания смены
@@ -114,6 +115,7 @@ export interface Shift {
   brand_steam_price: number;
   intro_steam_price: number;
   scrubbing_price: number;
+  zaparnik_price: number;
   created_at?: string;
 }
 
@@ -122,6 +124,16 @@ export interface Price {
   name: string;
   price: number;
   updated_at?: string;
+}
+
+export interface Payout {
+  id?: number;
+  user_id: number;
+  month: string; // Формат: YYYY-MM
+  amount: number;
+  date: string; // Дата выплаты
+  comment?: string;
+  created_at?: string;
 }
 
 // Инициализация PostgreSQL таблиц
@@ -162,6 +174,7 @@ async function initPostgres() {
         brand_steam INTEGER NOT NULL DEFAULT 0,
         intro_steam INTEGER NOT NULL DEFAULT 0,
         scrubbing INTEGER NOT NULL DEFAULT 0,
+        zaparnik INTEGER NOT NULL DEFAULT 0,
         masters INTEGER NOT NULL DEFAULT 1,
         total REAL NOT NULL,
         hourly_rate REAL NOT NULL,
@@ -169,8 +182,16 @@ async function initPostgres() {
         brand_steam_price REAL NOT NULL,
         intro_steam_price REAL NOT NULL,
         scrubbing_price REAL NOT NULL,
+        zaparnik_price REAL NOT NULL,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       )
+    `);
+
+    // Добавляем новые поля в существующую таблицу shifts, если их нет
+    await executeQuery(`
+      ALTER TABLE shifts 
+      ADD COLUMN IF NOT EXISTS zaparnik INTEGER NOT NULL DEFAULT 0,
+      ADD COLUMN IF NOT EXISTS zaparnik_price REAL NOT NULL DEFAULT 0
     `);
 
     await executeQuery(`
@@ -178,6 +199,27 @@ async function initPostgres() {
         id SERIAL PRIMARY KEY,
         name TEXT NOT NULL UNIQUE,
         price REAL NOT NULL,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+
+    await executeQuery(`
+      CREATE TABLE IF NOT EXISTS payouts (
+        id SERIAL PRIMARY KEY,
+        user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        month TEXT NOT NULL,
+        amount REAL NOT NULL,
+        date TEXT NOT NULL,
+        comment TEXT,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+
+    // Статус месяца (закрыт/открыт)
+    await executeQuery(`
+      CREATE TABLE IF NOT EXISTS month_status (
+        month TEXT PRIMARY KEY,
+        closed BOOLEAN NOT NULL DEFAULT FALSE,
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       )
     `);
@@ -361,6 +403,7 @@ export async function getShiftsWithUsers(): Promise<any[]> {
         u.first_name,
         u.last_name,
         u.username,
+        u.display_name,
         u.telegram_id
       FROM shifts s
       JOIN users u ON s.user_id = u.id
@@ -376,9 +419,9 @@ export async function getShiftsWithUsers(): Promise<any[]> {
 export async function addShift(shift: Omit<Shift, 'id' | 'created_at'>): Promise<void> {
   try {
     await executeQuery(`
-      INSERT INTO shifts (user_id, date, hours, steam_bath, brand_steam, intro_steam, scrubbing, masters, total, hourly_rate, steam_bath_price, brand_steam_price, intro_steam_price, scrubbing_price)
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
-    `, [shift.user_id, shift.date, shift.hours, shift.steam_bath, shift.brand_steam, shift.intro_steam, shift.scrubbing, shift.masters, shift.total, shift.hourly_rate, shift.steam_bath_price, shift.brand_steam_price, shift.intro_steam_price, shift.scrubbing_price]);
+      INSERT INTO shifts (user_id, date, hours, steam_bath, brand_steam, intro_steam, scrubbing, zaparnik, masters, total, hourly_rate, steam_bath_price, brand_steam_price, intro_steam_price, scrubbing_price, zaparnik_price)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
+    `, [shift.user_id, shift.date, shift.hours, shift.steam_bath, shift.brand_steam, shift.intro_steam, shift.scrubbing, shift.zaparnik, shift.masters, shift.total, shift.hourly_rate, shift.steam_bath_price, shift.brand_steam_price, shift.intro_steam_price, shift.scrubbing_price, shift.zaparnik_price]);
   } catch (error) {
     console.error('Ошибка при добавлении смены:', error);
     throw error;
@@ -390,6 +433,17 @@ export async function deleteShift(id: number, userId: number): Promise<void> {
     await executeQuery('DELETE FROM shifts WHERE id = $1 AND user_id = $2', [id, userId]);
   } catch (error) {
     console.error('Ошибка при удалении смены:', error);
+    throw error;
+  }
+}
+
+// Получить смену по ID
+export async function getShiftById(id: number): Promise<Shift | null> {
+  try {
+    const result = await executeQuery('SELECT * FROM shifts WHERE id = $1', [id]);
+    return result.rows.length > 0 ? (result.rows[0] as Shift) : null;
+  } catch (error) {
+    console.error('Ошибка при получении смены по ID:', error);
     throw error;
   }
 }
@@ -510,6 +564,7 @@ async function performDatabaseInit(): Promise<void> {
           brand_steam INTEGER NOT NULL DEFAULT 0,
           intro_steam INTEGER NOT NULL DEFAULT 0,
           scrubbing INTEGER NOT NULL DEFAULT 0,
+          zaparnik INTEGER NOT NULL DEFAULT 0,
           masters INTEGER NOT NULL DEFAULT 1,
           total REAL NOT NULL,
           hourly_rate REAL NOT NULL,
@@ -517,8 +572,16 @@ async function performDatabaseInit(): Promise<void> {
           brand_steam_price REAL NOT NULL,
           intro_steam_price REAL NOT NULL,
           scrubbing_price REAL NOT NULL,
+          zaparnik_price REAL NOT NULL DEFAULT 0,
           created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
+      `);
+
+      // Гарантируем наличие новых полей в существующей таблице (миграция)
+      await sql.query(`
+        ALTER TABLE shifts 
+        ADD COLUMN IF NOT EXISTS zaparnik INTEGER NOT NULL DEFAULT 0,
+        ADD COLUMN IF NOT EXISTS zaparnik_price REAL NOT NULL DEFAULT 0
       `);
 
       // Создание таблицы prices
@@ -527,6 +590,28 @@ async function performDatabaseInit(): Promise<void> {
           id SERIAL PRIMARY KEY,
           name TEXT NOT NULL UNIQUE,
           price REAL NOT NULL,
+          updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+      `);
+
+      // Создание таблицы payouts
+      await sql.query(`
+        CREATE TABLE IF NOT EXISTS payouts (
+          id SERIAL PRIMARY KEY,
+          user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+          month TEXT NOT NULL,
+          amount REAL NOT NULL,
+          date TEXT NOT NULL,
+          comment TEXT DEFAULT '',
+          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+      `);
+
+      // Статус месяца (закрыт/открыт)
+      await sql.query(`
+        CREATE TABLE IF NOT EXISTS month_status (
+          month TEXT PRIMARY KEY,
+          closed BOOLEAN NOT NULL DEFAULT FALSE,
           updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
       `);
@@ -604,6 +689,399 @@ export async function cleanupUsersExceptTest(): Promise<void> {
     console.log('Users cleanup completed successfully');
   } catch (error) {
     console.error('Error during users cleanup:', error);
+    throw error;
+  }
+}
+
+// Функции для работы с выплатами
+export async function createPayout(payout: Omit<Payout, 'id' | 'created_at'>): Promise<Payout> {
+  try {
+    const result = await executeQuery(
+      'INSERT INTO payouts (user_id, month, amount, date, comment) VALUES ($1, $2, $3, $4, $5) RETURNING *',
+      [payout.user_id, payout.month, payout.amount, payout.date, payout.comment]
+    );
+    return result.rows[0] as Payout;
+  } catch (error) {
+    console.error('Ошибка при создании выплаты:', error);
+    throw error;
+  }
+}
+
+export async function getPayoutsByUser(userId: number): Promise<Payout[]> {
+  try {
+    const result = await executeQuery(
+      'SELECT * FROM payouts WHERE user_id = $1 ORDER BY month DESC, date DESC',
+      [userId]
+    );
+    return result.rows as Payout[];
+  } catch (error) {
+    console.error('Ошибка при получении выплат пользователя:', error);
+    throw error;
+  }
+}
+
+export async function getPayoutsByUserAndMonth(userId: number, month: string): Promise<Payout[]> {
+  try {
+    const result = await executeQuery(
+      'SELECT * FROM payouts WHERE user_id = $1 AND month = $2 ORDER BY date DESC',
+      [userId, month]
+    );
+    return result.rows as Payout[];
+  } catch (error) {
+    console.error('Ошибка при получении выплат за месяц:', error);
+    throw error;
+  }
+}
+
+export async function deletePayout(id: number, userId: number): Promise<boolean> {
+  try {
+    const result = await executeQuery(
+      'DELETE FROM payouts WHERE id = $1 AND user_id = $2',
+      [id, userId]
+    );
+    return (result.rowCount || 0) > 0;
+  } catch (error) {
+    console.error('Ошибка при удалении выплаты:', error);
+    throw error;
+  }
+}
+
+// Получить выплату по ID
+export async function getPayoutById(id: number): Promise<Payout | null> {
+  try {
+    const result = await executeQuery('SELECT * FROM payouts WHERE id = $1', [id]);
+    return result.rows.length > 0 ? (result.rows[0] as Payout) : null;
+  } catch (error) {
+    console.error('Ошибка при получении выплаты по ID:', error);
+    throw error;
+  }
+}
+
+// --- Статус месяца (закрыт/открыт) ---
+export async function getMonthStatuses(): Promise<{ month: string; closed: boolean }[]> {
+  try {
+    const result = await executeQuery('SELECT month, closed FROM month_status ORDER BY month DESC');
+    return result.rows.map((row: any) => ({ month: row.month, closed: !!row.closed }));
+  } catch (error) {
+    console.error('Ошибка при получении статусов месяцев:', error);
+    throw error;
+  }
+}
+
+export async function getMonthStatus(month: string): Promise<boolean> {
+  try {
+    const result = await executeQuery('SELECT closed FROM month_status WHERE month = $1', [month]);
+    if (result.rows.length === 0) {
+      return false; // По умолчанию месяц открыт
+    }
+    return !!result.rows[0].closed;
+  } catch (error) {
+    console.error('Ошибка при получении статуса месяца:', error);
+    throw error;
+  }
+}
+
+export async function setMonthClosed(month: string, closed: boolean): Promise<{ month: string; closed: boolean }> {
+  try {
+    const result = await executeQuery(
+      `INSERT INTO month_status (month, closed, updated_at)
+       VALUES ($1, $2, CURRENT_TIMESTAMP)
+       ON CONFLICT (month) DO UPDATE SET closed = EXCLUDED.closed, updated_at = CURRENT_TIMESTAMP
+       RETURNING month, closed`,
+      [month, closed]
+    );
+    return { month: result.rows[0].month, closed: !!result.rows[0].closed };
+  } catch (error) {
+    console.error('Ошибка при установке статуса месяца:', error);
+    throw error;
+  }
+}
+
+// Функция для получения месяцев с сменами для пользователя
+export async function getMonthsWithShifts(userId: number): Promise<string[]> {
+  try {
+    const result = await executeQuery(
+      `SELECT DISTINCT 
+         TO_CHAR(TO_DATE(date, 'YYYY-MM-DD'), 'YYYY-MM') as month
+       FROM shifts 
+       WHERE user_id = $1 
+       ORDER BY month DESC`,
+      [userId]
+    );
+    return result.rows.map(row => row.month);
+  } catch (error) {
+    console.error('Ошибка при получении месяцев со сменами:', error);
+    throw error;
+  }
+}
+
+// Функция для получения суммы заработка за месяц
+export async function getEarningsForMonth(userId: number, month: string): Promise<number> {
+  try {
+    const result = await executeQuery(
+      `SELECT COALESCE(SUM(total), 0) as total_earnings
+       FROM shifts 
+       WHERE user_id = $1 
+       AND TO_CHAR(TO_DATE(date, 'YYYY-MM-DD'), 'YYYY-MM') = $2`,
+      [userId, month]
+    );
+    return parseFloat(result.rows[0]?.total_earnings || '0');
+  } catch (error) {
+    console.error('Ошибка при получении заработка за месяц:', error);
+    throw error;
+  }
+}
+
+// Функция для получения суммы выплат за месяц
+export async function getPayoutsForMonth(userId: number, month: string): Promise<number> {
+  try {
+    const result = await executeQuery(
+      `SELECT COALESCE(SUM(amount), 0) as total_payouts
+       FROM payouts 
+       WHERE user_id = $1 AND month = $2`,
+      [userId, month]
+    );
+    return parseFloat(result.rows[0]?.total_payouts || '0');
+  } catch (error) {
+    console.error('Ошибка при получении выплат за месяц:', error);
+    throw error;
+  }
+}
+
+// Итоги за месяц по всем пользователям (заработано по сменам, выплачено, остаток)
+export async function getMonthTotals(month: string): Promise<{ earned: number; paid: number; remaining: number }> {
+  try {
+    const earnedResult = await executeQuery(
+      `SELECT COALESCE(SUM(total), 0) as earned
+       FROM shifts 
+       WHERE TO_CHAR(DATE_TRUNC('month', date::date), 'YYYY-MM') = $1`,
+      [month]
+    );
+
+    const paidResult = await executeQuery(
+      `SELECT COALESCE(SUM(amount), 0) as paid
+       FROM payouts 
+       WHERE month = $1`,
+      [month]
+    );
+
+    const earned = parseFloat(earnedResult.rows[0]?.earned || '0');
+    const paid = parseFloat(paidResult.rows[0]?.paid || '0');
+    const remaining = earned - paid;
+    return { earned, paid, remaining };
+  } catch (error) {
+    console.error('Ошибка при получении итогов месяца:', error);
+    throw error;
+  }
+}
+
+// Оптимизированная функция для получения всех данных о выплатах одним запросом
+export async function getPayoutsDataOptimized(userId: number): Promise<any[]> {
+  try {
+    const result = await executeQuery(
+      `WITH monthly_earnings AS (
+        SELECT 
+          TO_CHAR(DATE_TRUNC('month', date::date), 'YYYY-MM') as month,
+          SUM(total) as earnings
+        FROM shifts 
+        WHERE user_id = $1
+        GROUP BY month
+      ),
+      monthly_payouts AS (
+        SELECT 
+          month,
+          SUM(amount) as total_payouts,
+          JSON_AGG(
+            JSON_BUILD_OBJECT(
+              'id', id,
+              'amount', amount,
+              'date', date,
+              'comment', comment
+            ) ORDER BY date DESC
+          ) as payouts
+        FROM payouts 
+        WHERE user_id = $1
+        GROUP BY month
+      )
+      SELECT 
+        me.month,
+        me.earnings,
+        COALESCE(mp.total_payouts, 0) as total_payouts,
+        (me.earnings - COALESCE(mp.total_payouts, 0)) as remaining,
+        CASE 
+          WHEN me.earnings > 0 THEN ROUND((COALESCE(mp.total_payouts, 0) / me.earnings) * 100)
+          ELSE 0 
+        END as progress,
+        CASE 
+          WHEN COALESCE(mp.total_payouts, 0) >= me.earnings THEN 'completed'
+          WHEN COALESCE(mp.total_payouts, 0) > 0 THEN 'partial'
+          ELSE 'none'
+        END as status,
+        COALESCE(mp.payouts, '[]'::json) as payouts
+      FROM monthly_earnings me
+      LEFT JOIN monthly_payouts mp ON me.month = mp.month
+      ORDER BY me.month DESC`,
+      [userId]
+    );
+    return result.rows;
+  } catch (error) {
+    console.error('Ошибка при получении оптимизированных данных о выплатах:', error);
+    throw error;
+  }
+}
+
+export async function getMonthlyReportsForAllMasters(month?: string): Promise<any[]> {
+  try {
+    if (month) {
+      // Если указан конкретный месяц, возвращаем данные только для этого месяца
+      const query = `
+        WITH monthly_earnings AS (
+          SELECT 
+            s.user_id,
+            u.first_name,
+            u.last_name,
+            u.display_name,
+            $1 as month,
+            SUM(s.hours) as hours,
+            SUM(s.steam_bath) as steam_bath,
+            SUM(s.brand_steam) as brand_steam,
+            SUM(s.intro_steam) as intro_steam,
+            SUM(s.scrubbing) as scrubbing,
+            SUM(s.zaparnik) as zaparnik,
+            SUM(s.total) as earnings
+          FROM shifts s
+          JOIN users u ON s.user_id = u.id
+          WHERE (u.is_blocked = false OR u.is_blocked IS NULL)
+          AND TO_CHAR(DATE_TRUNC('month', s.date::date), 'YYYY-MM') = $1
+          GROUP BY s.user_id, u.first_name, u.last_name, u.display_name
+        ),
+        monthly_payouts AS (
+          SELECT 
+            p.user_id,
+            SUM(p.amount) as total_payouts
+          FROM payouts p
+          WHERE p.month = $1
+          GROUP BY p.user_id
+        )
+        SELECT 
+          me.user_id,
+          me.first_name,
+          me.last_name,
+          me.display_name,
+          me.month,
+          me.hours,
+          me.steam_bath,
+          me.brand_steam,
+          me.intro_steam,
+          me.scrubbing,
+          me.zaparnik,
+          me.earnings,
+          COALESCE(mp.total_payouts, 0) as total_payouts,
+          (me.earnings - COALESCE(mp.total_payouts, 0)) as remaining,
+          CASE 
+            WHEN (me.earnings - COALESCE(mp.total_payouts, 0)) = 0 THEN 'completed'
+            WHEN COALESCE(mp.total_payouts, 0) > 0 THEN 'partial'
+            ELSE 'unpaid'
+          END as status
+        FROM monthly_earnings me
+        LEFT JOIN monthly_payouts mp ON me.user_id = mp.user_id
+        ORDER BY me.earnings DESC
+      `;
+      
+      const result = await executeQuery(query, [month]);
+      return result.rows;
+    } else {
+      // Если месяц не указан, возвращаем данные для всех месяцев
+      const query = `
+        WITH monthly_earnings AS (
+          SELECT 
+            s.user_id,
+            u.first_name,
+            u.last_name,
+            u.display_name,
+            TO_CHAR(DATE_TRUNC('month', s.date::date), 'YYYY-MM') as month,
+            SUM(s.hours) as hours,
+            SUM(s.steam_bath) as steam_bath,
+            SUM(s.brand_steam) as brand_steam,
+            SUM(s.intro_steam) as intro_steam,
+            SUM(s.scrubbing) as scrubbing,
+            SUM(s.zaparnik) as zaparnik,
+            SUM(s.total) as earnings
+          FROM shifts s
+          JOIN users u ON s.user_id = u.id
+          WHERE u.is_blocked = false OR u.is_blocked IS NULL
+          GROUP BY s.user_id, u.first_name, u.last_name, u.display_name, month
+        ),
+        monthly_payouts AS (
+          SELECT 
+            p.user_id,
+            p.month,
+            SUM(p.amount) as total_payouts
+          FROM payouts p
+          GROUP BY p.user_id, p.month
+        )
+        SELECT 
+          me.user_id,
+          me.first_name,
+          me.last_name,
+          me.display_name,
+          me.month,
+          me.hours,
+          me.steam_bath,
+          me.brand_steam,
+          me.intro_steam,
+          me.scrubbing,
+          me.zaparnik,
+          me.earnings,
+          COALESCE(mp.total_payouts, 0) as total_payouts,
+          (me.earnings - COALESCE(mp.total_payouts, 0)) as remaining,
+          CASE 
+            WHEN (me.earnings - COALESCE(mp.total_payouts, 0)) = 0 THEN 'completed'
+            WHEN COALESCE(mp.total_payouts, 0) > 0 THEN 'partial'
+            ELSE 'unpaid'
+          END as status
+        FROM monthly_earnings me
+        LEFT JOIN monthly_payouts mp ON me.user_id = mp.user_id AND me.month = mp.month
+        ORDER BY me.month DESC, me.earnings DESC
+      `;
+      
+      const result = await executeQuery(query, []);
+      return result.rows;
+    }
+  } catch (error) {
+    console.error('Ошибка при получении отчетов по мастерам:', error);
+    throw error;
+  }
+}
+
+export async function getShiftsForUserAndMonth(userId: number, month: string): Promise<Shift[]> {
+  try {
+    const result = await executeQuery(
+      `SELECT * FROM shifts 
+       WHERE user_id = $1 
+       AND TO_CHAR(DATE_TRUNC('month', date::date), 'YYYY-MM') = $2
+       ORDER BY date DESC`,
+      [userId, month]
+    );
+    return result.rows;
+  } catch (error) {
+    console.error('Ошибка при получении смен пользователя за месяц:', error);
+    throw error;
+  }
+}
+
+// Получить все месяцы, в которых есть смены
+export async function getMonthsWithShiftsData(): Promise<string[]> {
+  try {
+    const result = await executeQuery(
+      `SELECT DISTINCT TO_CHAR(DATE_TRUNC('month', date::date), 'YYYY-MM') as month
+       FROM shifts 
+       ORDER BY month DESC`,
+      []
+    );
+    return result.rows.map(row => row.month);
+  } catch (error) {
+    console.error('Ошибка при получении месяцев со сменами:', error);
     throw error;
   }
 }

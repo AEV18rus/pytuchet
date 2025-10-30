@@ -7,6 +7,7 @@ interface Prices {
   brand_steam_price: number;
   intro_steam_price: number;
   scrubbing_price: number;
+  zaparnik_price: number;
 }
 
 const priceMapping: Record<keyof Prices, string> = {
@@ -14,7 +15,8 @@ const priceMapping: Record<keyof Prices, string> = {
   steam_bath_price: 'Путевое парение',
   brand_steam_price: 'Фирменное парение',
   intro_steam_price: 'Ознакомительное парение',
-  scrubbing_price: 'Скрабирование'
+  scrubbing_price: 'Скрабирование',
+  zaparnik_price: 'Запарник'
 };
 
 export async function POST(request: NextRequest) {
@@ -105,7 +107,8 @@ export async function GET() {
       steam_bath_price: 0,
       brand_steam_price: 0,
       intro_steam_price: 0,
-      scrubbing_price: 0
+      scrubbing_price: 0,
+      zaparnik_price: 0
     };
     
     // Заполняем данными из базы

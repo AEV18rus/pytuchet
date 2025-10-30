@@ -9,7 +9,10 @@
     "lint": "eslint",
     "init-postgres": "node scripts/init-postgres.js",
     "init-vercel": "node scripts/init-vercel-postgres.js",
-    "view-db": "node scripts/view-database.js"
+    "view-db": "node scripts/view-database.js",
+    "webhook:set": "node scripts/setup-telegram-webhook.js set",
+    "webhook:info": "node scripts/setup-telegram-webhook.js info",
+    "webhook:delete": "node scripts/setup-telegram-webhook.js delete"
   },
   "dependencies": {
     "@tma.js/init-data-node": "^2.0.3",

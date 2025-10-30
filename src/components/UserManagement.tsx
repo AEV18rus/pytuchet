@@ -269,10 +269,10 @@ export default function UserManagement({ onUserSelect }: UserManagementProps) {
                   <tr>
                     <th>Дата</th>
                     <th>Часы</th>
-                    <th>Путевое</th>
-                    <th>Фирменное</th>
-                    <th>Ознак.</th>
-                    <th>Скраб</th>
+                    <th>П</th>
+                    <th>Ф</th>
+                    <th>О</th>
+                    <th>С</th>
                     <th>Мастера</th>
                     <th>Итого</th>
                   </tr>

@@ -25,7 +25,8 @@ export async function POST(request: Request) {
       'Путевое парение': 'steam_bath_price',
       'Фирменное парение': 'brand_steam_price',
       'Ознакомительное парение': 'intro_steam_price',
-      'Скрабирование': 'scrubbing_price'
+      'Скрабирование': 'scrubbing_price',
+      'Запарник': 'zaparnik_price'
     };
     
     const currentPrices: { [key: string]: number } = {
@@ -33,7 +34,8 @@ export async function POST(request: Request) {
       steam_bath_price: 0,
       brand_steam_price: 0,
       intro_steam_price: 0,
-      scrubbing_price: 0
+      scrubbing_price: 0,
+      zaparnik_price: 0
     };
     
     // Заполняем текущие цены
@@ -53,10 +55,11 @@ export async function POST(request: Request) {
       shiftDate.setDate(today.getDate() - i * 2); // Каждые 2 дня
       
       const hours = 8 + Math.floor(Math.random() * 4); // 8-11 часов
-      const steamBath = Math.floor(Math.random() * 3); // 0-2 путевых парения
-      const brandSteam = Math.floor(Math.random() * 2); // 0-1 фирменное парение
-      const introSteam = Math.floor(Math.random() * 2); // 0-1 ознакомительное
-      const scrubbing = Math.floor(Math.random() * 3); // 0-2 скрабирования
+      const steamBath = Math.floor(Math.random() * 4); // 0-3
+      const brandSteam = Math.floor(Math.random() * 3); // 0-2
+      const introSteam = Math.floor(Math.random() * 2); // 0-1
+      const scrubbing = Math.floor(Math.random() * 3); // 0-2
+      const zaparnik = Math.floor(Math.random() * 2); // 0-1
       const masters = 2; // Всегда 2 мастера
       
       // Рассчитываем общую сумму
@@ -65,7 +68,8 @@ export async function POST(request: Request) {
         steamBath * currentPrices.steam_bath_price +
         brandSteam * currentPrices.brand_steam_price +
         introSteam * currentPrices.intro_steam_price +
-        scrubbing * currentPrices.scrubbing_price;
+        scrubbing * currentPrices.scrubbing_price +
+        zaparnik * currentPrices.zaparnik_price;
 
       const shift = {
         user_id: user.id!,
@@ -75,13 +79,15 @@ export async function POST(request: Request) {
         brand_steam: brandSteam,
         intro_steam: introSteam,
         scrubbing,
+        zaparnik,
         masters,
         total: Math.round(total),
         hourly_rate: currentPrices.hourly_rate,
         steam_bath_price: currentPrices.steam_bath_price,
         brand_steam_price: currentPrices.brand_steam_price,
         intro_steam_price: currentPrices.intro_steam_price,
-        scrubbing_price: currentPrices.scrubbing_price
+        scrubbing_price: currentPrices.scrubbing_price,
+        zaparnik_price: currentPrices.zaparnik_price
       };
 
       await addShift(shift);

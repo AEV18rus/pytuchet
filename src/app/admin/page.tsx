@@ -25,6 +25,7 @@ interface Shift {
   first_name?: string;
   last_name?: string;
   username?: string;
+  display_name?: string;
   telegram_id?: number;
 }
 
@@ -130,12 +131,12 @@ export default function AdminPage() {
                </button>
 
                <button 
-                 onClick={handleReportsClick}
+                 onClick={() => router.push('/admin/reports')}
                  className="admin-card admin-button"
                >
                  <div className="card-content">
                    <h3>Отчеты</h3>
-                   <p>Подробная таблица по сменам</p>
+                   <p>Отчеты по мастерам с детализацией смен</p>
                  </div>
                </button>
 
@@ -206,13 +207,13 @@ export default function AdminPage() {
                   <table className="shifts-table">
                     <thead>
                       <tr>
-                        <th>Пользователь</th>
+                        <th>Мастер</th>
                         <th>Дата</th>
                         <th>Часы</th>
-                        <th>Парилка</th>
-                        <th>Фирменный пар</th>
-                        <th>Ознакомительный пар</th>
-                        <th>Скрабирование</th>
+                        <th>П</th>
+                        <th>Ф</th>
+                        <th>О</th>
+                        <th>С</th>
                         <th>Мастера</th>
                         <th>Итого</th>
                       </tr>
@@ -222,7 +223,9 @@ export default function AdminPage() {
                         <tr key={shift.id}>
                           <td className="user-cell">
                             <div className="user-info">
-                              <div className="user-name">{shift.first_name} {shift.last_name}</div>
+                              <div className="user-name">
+                                {shift.display_name || `${shift.first_name} ${shift.last_name || ''}`.trim()}
+                              </div>
                               <div className="user-username">@{shift.username}</div>
                             </div>
                           </td>

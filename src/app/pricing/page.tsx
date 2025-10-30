@@ -9,6 +9,7 @@ interface Prices {
   brand_steam_price: number;
   intro_steam_price: number;
   scrubbing_price: number;
+  zaparnik_price: number;
 }
 
 export default function PricingPage() {
@@ -17,7 +18,8 @@ export default function PricingPage() {
     steam_bath_price: 0,
     brand_steam_price: 0,
     intro_steam_price: 0,
-    scrubbing_price: 0
+    scrubbing_price: 0,
+    zaparnik_price: 0
   });
 
   const [showSuccess, setShowSuccess] = useState(false);
@@ -461,6 +463,22 @@ export default function PricingPage() {
                   min="0"
                   step="50"
                   onChange={(e) => handleInputChange('scrubbing_price', e.target.value)}
+                />
+                <span className="currency">₽</span>
+              </div>
+            </div>
+
+            <div className="price-item">
+              <label className="price-label" htmlFor="zaparnikPrice">Запарник:</label>
+              <div>
+                <input
+                  type="number"
+                  id="zaparnikPrice"
+                  className="price-input"
+                  value={prices.zaparnik_price}
+                  min="0"
+                  step="50"
+                  onChange={(e) => handleInputChange('zaparnik_price', e.target.value)}
                 />
                 <span className="currency">₽</span>
               </div>

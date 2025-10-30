@@ -207,6 +207,49 @@ body {
     text-align: center;
 }
 
+/* Общий стиль таблиц смен в тёплой теме (как на главной странице) */
+.shifts-table {
+    width: 100%;
+    border-collapse: collapse;
+    background: var(--background-card);
+    border-radius: 10px;
+    overflow: hidden;
+    box-shadow: 0 4px 8px var(--shadow-light);
+}
+
+.shifts-table th {
+    background: linear-gradient(135deg, var(--primary-color) 0%, var(--secondary-color) 100%);
+    color: var(--accent-color);
+    padding: 15px 12px;
+    text-align: left;
+    font-weight: 600;
+    font-size: 14px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.shifts-table td {
+    padding: 15px 12px;
+    border-bottom: 1px solid var(--border-light);
+    color: var(--font-color);
+}
+
+.shifts-table tr:hover {
+    background: var(--background-section);
+}
+
+.shifts-table tr:last-child td {
+    border-bottom: none;
+}
+
+.shift-row {
+    transition: background-color 0.2s ease;
+}
+
+.shift-row:hover {
+    background-color: rgba(139, 69, 19, 0.05);
+}
+
 /* Адаптивность */
 @media (max-width: 768px) {
     body {
@@ -251,5 +294,23 @@ body {
     .btn {
         padding: 12px 25px;
         font-size: 14px;
+    }
+
+    /* Мобильные стили для таблицы смен */
+    .shifts-table {
+        font-size: 14px;
+    }
+    .shifts-table th,
+    .shifts-table td {
+        padding: 8px 4px;
+        font-size: 12px;
+    }
+    .shifts-table th:first-child,
+    .shifts-table td:first-child {
+        padding-left: 8px;
+    }
+    .shifts-table th:last-child,
+    .shifts-table td:last-child {
+        padding-right: 8px;
     }
 }

@@ -51,9 +51,9 @@ export default function PricingPage() {
       if (response.ok) {
         setShowSuccess(true);
         
-        // Перейти на добавление новой смены (главная страница) через 1 секунду
+        // Перейти в админ панель через 1 секунду
         setTimeout(() => {
-          window.location.href = '/';
+          window.location.href = '/admin';
         }, 1000);
       } else {
         const errorData = await response.json();
@@ -75,6 +75,8 @@ export default function PricingPage() {
   useEffect(() => {
     loadPrices();
   }, []);
+
+
 
   return (
     <>
@@ -363,6 +365,8 @@ export default function PricingPage() {
             padding: 10px;
           }
         }
+
+
       `}</style>
 
       <div className="container">
@@ -493,6 +497,8 @@ export default function PricingPage() {
                 Цены успешно сохранены!
               </div>
             )}
+
+
           </div>
         </div>
       </div>

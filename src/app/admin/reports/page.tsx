@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import Image from 'next/image';
+import { useRouter } from 'next/navigation';
 
 // Интерфейсы данных
 interface Employee {
@@ -452,6 +453,7 @@ function MonthCard({
 
 // Основной компонент страницы отчетов
 export default function ReportsPage() {
+  const router = useRouter();
   const [months, setMonths] = useState<Month[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -582,8 +584,15 @@ export default function ReportsPage() {
         </div>
       </div>
       <div className="content">
+        <div className="back-section">
+          <button 
+            onClick={() => router.push('/admin')}
+            className="btn btn-secondary"
+          >
+            Назад
+          </button>
+        </div>
 
-        
         {months.length === 0 ? (
           <div className="empty-state">
             <div className="empty-title">Нет данных для отображения</div>
@@ -599,6 +608,43 @@ export default function ReportsPage() {
           ))
         )}
       </div>
+
+      <style jsx>{`
+        .back-section {
+          margin-bottom: 20px;
+        }
+
+        .btn {
+          background: linear-gradient(135deg, var(--primary-color) 0%, var(--secondary-color) 100%);
+          color: var(--accent-color);
+          border: none;
+          padding: 12px 24px;
+          border-radius: 8px;
+          font-size: 14px;
+          font-weight: 600;
+          cursor: pointer;
+          transition: all 0.3s ease;
+          box-shadow: 0 4px 15px var(--shadow-medium);
+          text-transform: uppercase;
+          letter-spacing: 0.5px;
+        }
+
+        .btn:hover {
+          transform: translateY(-2px);
+          box-shadow: 0 6px 20px var(--shadow-medium);
+          background: linear-gradient(135deg, var(--primary-light) 0%, var(--secondary-light) 100%);
+        }
+
+        .btn-secondary {
+          background: linear-gradient(135deg, var(--accent-color) 0%, var(--accent-light) 100%);
+          color: var(--primary-color);
+          border: 2px solid var(--primary-color);
+        }
+
+        .btn-secondary:hover {
+          background: linear-gradient(135deg, var(--accent-dark) 0%, var(--accent-color) 100%);
+        }
+      `}</style>
     </div>
   );
 }

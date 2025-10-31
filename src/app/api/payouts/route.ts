@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { 
   createPayout, 
+  createPayoutWithCorrection,
   getPayoutsByUser, 
   getPayoutsByUserAndMonth,
   getMonthsWithShifts,
@@ -74,28 +75,25 @@ export async function POST(request: NextRequest) {
       }, { status: 403 });
     }
 
-    // Создаем выплату
-    console.log('💰 Создаем выплату...');
-    const payout = await createPayout({
+    // Создаем выплату с корректировкой
+    console.log('💰 Создаем выплату с корректировкой...');
+    const result = await createPayoutWithCorrection({
       user_id: user.id!,
       month,
       amount: parseFloat(amount),
       date,
       comment: comment || ''
     });
-    console.log('✅ Выплата создана:', payout);
-
-    // Обрабатываем возможный перенос переплаты
-    console.log('🔄 Обрабатываем переносы переплат...');
-    try {
-      await processOverpaymentCarryover(user.id!, month, date);
-      console.log('✅ Переносы обработаны');
-    } catch (carryoverError) {
-      console.error('⚠️ Ошибка при обработке переносов:', carryoverError);
-      // Не прерываем выполнение, так как выплата уже создана
+    console.log('✅ Выплата создана:', result.payout);
+    
+    if (result.overpayment) {
+      console.log(`🔄 Переплата ${result.overpayment} ₽ перенесена на следующий месяц`);
     }
 
-    return NextResponse.json({ payout });
+    return NextResponse.json({ 
+      payout: result.payout,
+      overpayment: result.overpayment 
+    });
   } catch (error) {
     console.error('❌ Ошибка при создании выплаты:', error);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });

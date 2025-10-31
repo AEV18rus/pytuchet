@@ -262,26 +262,11 @@ export default function PayoutsPage() {
   };
 
   const getDisplayedPayoutAmount = (payouts: Payout[], currentIndex: number, earnings: number) => {
-    // Рассчитываем накопленную сумму до текущей выплаты (включительно)
-    let accumulatedAmount = 0;
-    for (let i = 0; i <= currentIndex; i++) {
-      accumulatedAmount += payouts[i].amount;
-    }
+    const currentPayout = payouts[currentIndex];
     
-    // Рассчитываем накопленную сумму до текущей выплаты (исключительно)
-    let previousAccumulated = 0;
-    for (let i = 0; i < currentIndex; i++) {
-      previousAccumulated += payouts[i].amount;
-    }
-    
-    // Если предыдущие выплаты уже покрыли весь заработок, показываем 0
-    if (previousAccumulated >= earnings) {
-      return 0;
-    }
-    
-    // Если текущая выплата превышает оставшуюся сумму, показываем только оставшуюся часть
-    const remainingToEarn = earnings - previousAccumulated;
-    return Math.min(payouts[currentIndex].amount, remainingToEarn);
+    // Теперь в базе данных хранятся уже скорректированные суммы,
+    // поэтому просто возвращаем сумму из базы
+    return currentPayout.amount;
   };
 
   const getAvailableYears = () => {

@@ -739,6 +739,87 @@ export async function createPayout(payout: Omit<Payout, 'id' | 'created_at'>): P
   }
 }
 
+// Новая функция для создания выплат с корректировкой сумм
+export async function createPayoutWithCorrection(payout: Omit<Payout, 'id' | 'created_at'>): Promise<{ payout: Payout; overpayment?: number }> {
+  try {
+    // Получаем заработок за месяц
+    const monthlyEarnings = await getEarningsForMonth(payout.user_id, payout.month);
+    
+    // Получаем уже существующие выплаты за месяц
+    const existingPayouts = await getPayoutsForMonth(payout.user_id, payout.month);
+    
+    // Вычисляем оставшуюся сумму для выплат
+    const remainingEarnings = monthlyEarnings - existingPayouts;
+    
+    // Определяем сумму для записи в базу
+    let actualAmount = payout.amount;
+    let overpayment = 0;
+    
+    if (payout.amount > remainingEarnings) {
+      // Если выплата превышает оставшийся заработок
+      actualAmount = Math.max(0, remainingEarnings);
+      overpayment = payout.amount - actualAmount;
+    }
+    
+    // Создаем выплату с скорректированной суммой
+    const correctedPayout = {
+      ...payout,
+      amount: actualAmount
+    };
+    
+    const result = await executeQuery(
+      'INSERT INTO payouts (user_id, month, amount, date, comment) VALUES ($1, $2, $3, $4, $5) RETURNING *',
+      [correctedPayout.user_id, correctedPayout.month, correctedPayout.amount, correctedPayout.date, correctedPayout.comment]
+    );
+    
+    const createdPayout = result.rows[0] as Payout;
+    
+    // Если есть переплата, создаем перенос на следующий месяц
+    if (overpayment > 0) {
+      await createCarryoverForOverpayment(payout.user_id, payout.month, overpayment, payout.date);
+    }
+    
+    return { 
+      payout: createdPayout, 
+      overpayment: overpayment > 0 ? overpayment : undefined 
+    };
+  } catch (error) {
+    console.error('Ошибка при создании выплаты с корректировкой:', error);
+    throw error;
+  }
+}
+
+// Вспомогательная функция для создания переноса переплаты
+async function createCarryoverForOverpayment(userId: number, fromMonth: string, amount: number, date: string): Promise<void> {
+  try {
+    // Вычисляем следующий месяц
+    const [year, month] = fromMonth.split('-').map(Number);
+    const nextDate = new Date(year, month, 1); // month уже 0-indexed после split
+    const nextMonth = `${nextDate.getFullYear()}-${String(nextDate.getMonth() + 1).padStart(2, '0')}`;
+    
+    // Создаем комментарий для переноса
+    const monthNames = [
+      'января', 'февраля', 'марта', 'апреля', 'мая', 'июня',
+      'июля', 'августа', 'сентября', 'октября', 'ноября', 'декабря'
+    ];
+    const fromMonthName = monthNames[month - 1];
+    const fromYear = year;
+    const comment = `Перенос с ${fromMonthName} ${fromYear}`;
+    
+    // Создаем выплату-перенос в следующем месяце
+    await createPayoutWithCorrection({
+      user_id: userId,
+      month: nextMonth,
+      amount: amount,
+      date: date,
+      comment: comment
+    });
+  } catch (error) {
+    console.error('Ошибка при создании переноса переплаты:', error);
+    throw error;
+  }
+}
+
 export async function getPayoutsByUser(userId: number): Promise<Payout[]> {
   try {
     const result = await executeQuery(
@@ -922,7 +1003,8 @@ export async function getPayoutsDataOptimized(userId: number): Promise<any[]> {
       monthly_payouts AS (
         SELECT 
           month,
-          SUM(amount) as total_payouts,
+          -- Включаем все выплаты, включая переносы
+          SUM(amount) as raw_total_payouts,
           JSON_AGG(
             JSON_BUILD_OBJECT(
               'id', id,
@@ -934,49 +1016,26 @@ export async function getPayoutsDataOptimized(userId: number): Promise<any[]> {
         FROM payouts 
         WHERE user_id = $1
         GROUP BY month
-      ),
-      carryovers_in AS (
-        SELECT 
-          to_month as month,
-          SUM(amount) as carryover_in
-        FROM carryovers 
-        WHERE user_id = $1
-        GROUP BY to_month
-      ),
-      carryovers_out AS (
-        SELECT 
-          from_month as month,
-          SUM(amount) as carryover_out
-        FROM carryovers 
-        WHERE user_id = $1
-        GROUP BY from_month
       )
       SELECT 
         me.month,
         me.earnings,
-        COALESCE(mp.total_payouts, 0) as total_payouts,
-        COALESCE(ci.carryover_in, 0) as carryover_in,
-        COALESCE(co.carryover_out, 0) as carryover_out,
+        -- Ограничиваем выплаченную сумму заработанной суммой для корректного отображения
+        LEAST(COALESCE(mp.raw_total_payouts, 0), me.earnings) as total_payouts,
+        GREATEST(0, me.earnings - COALESCE(mp.raw_total_payouts, 0)) as remaining,
         CASE 
-          WHEN COALESCE(co.carryover_out, 0) > 0 THEN 0
-          ELSE (me.earnings + COALESCE(ci.carryover_in, 0) - COALESCE(mp.total_payouts, 0))
-        END as remaining,
-        CASE 
-          WHEN (me.earnings + COALESCE(ci.carryover_in, 0)) > 0 THEN 
-            ROUND((COALESCE(mp.total_payouts, 0) / (me.earnings + COALESCE(ci.carryover_in, 0))) * 100)
+          WHEN me.earnings > 0 THEN 
+            ROUND((LEAST(COALESCE(mp.raw_total_payouts, 0), me.earnings) / me.earnings) * 100)
           ELSE 0 
         END as progress,
         CASE 
-          WHEN COALESCE(co.carryover_out, 0) > 0 THEN 'overpaid'
-          WHEN COALESCE(mp.total_payouts, 0) >= (me.earnings + COALESCE(ci.carryover_in, 0)) THEN 'completed'
-          WHEN COALESCE(mp.total_payouts, 0) > 0 THEN 'partial'
+          WHEN COALESCE(mp.raw_total_payouts, 0) >= me.earnings THEN 'completed'
+          WHEN COALESCE(mp.raw_total_payouts, 0) > 0 THEN 'partial'
           ELSE 'none'
         END as status,
         COALESCE(mp.payouts, '[]'::json) as payouts
       FROM monthly_earnings me
       LEFT JOIN monthly_payouts mp ON me.month = mp.month
-      LEFT JOIN carryovers_in ci ON me.month = ci.month
-      LEFT JOIN carryovers_out co ON me.month = co.month
       ORDER BY me.month DESC`,
       [userId]
     );
@@ -1015,7 +1074,7 @@ export async function getMonthlyReportsForAllMasters(month?: string): Promise<an
         monthly_payouts AS (
           SELECT 
             p.user_id,
-            SUM(p.amount) as total_payouts
+            SUM(p.amount) as raw_total_payouts
           FROM payouts p
           WHERE p.month = $1
           GROUP BY p.user_id
@@ -1033,11 +1092,11 @@ export async function getMonthlyReportsForAllMasters(month?: string): Promise<an
           me.scrubbing,
           me.zaparnik,
           me.earnings,
-          COALESCE(mp.total_payouts, 0) as total_payouts,
-          (me.earnings - COALESCE(mp.total_payouts, 0)) as remaining,
+          LEAST(COALESCE(mp.raw_total_payouts, 0), me.earnings) as total_payouts,
+          GREATEST(0, me.earnings - COALESCE(mp.raw_total_payouts, 0)) as remaining,
           CASE 
-            WHEN (me.earnings - COALESCE(mp.total_payouts, 0)) = 0 THEN 'completed'
-            WHEN COALESCE(mp.total_payouts, 0) > 0 THEN 'partial'
+            WHEN COALESCE(mp.raw_total_payouts, 0) >= me.earnings THEN 'completed'
+            WHEN COALESCE(mp.raw_total_payouts, 0) > 0 THEN 'partial'
             ELSE 'unpaid'
           END as status
         FROM monthly_earnings me
@@ -1073,7 +1132,7 @@ export async function getMonthlyReportsForAllMasters(month?: string): Promise<an
           SELECT 
             p.user_id,
             p.month,
-            SUM(p.amount) as total_payouts
+            SUM(p.amount) as raw_total_payouts
           FROM payouts p
           GROUP BY p.user_id, p.month
         )
@@ -1090,11 +1149,11 @@ export async function getMonthlyReportsForAllMasters(month?: string): Promise<an
           me.scrubbing,
           me.zaparnik,
           me.earnings,
-          COALESCE(mp.total_payouts, 0) as total_payouts,
-          (me.earnings - COALESCE(mp.total_payouts, 0)) as remaining,
+          LEAST(COALESCE(mp.raw_total_payouts, 0), me.earnings) as total_payouts,
+          GREATEST(0, me.earnings - COALESCE(mp.raw_total_payouts, 0)) as remaining,
           CASE 
-            WHEN (me.earnings - COALESCE(mp.total_payouts, 0)) = 0 THEN 'completed'
-            WHEN COALESCE(mp.total_payouts, 0) > 0 THEN 'partial'
+            WHEN COALESCE(mp.raw_total_payouts, 0) >= me.earnings THEN 'completed'
+            WHEN COALESCE(mp.raw_total_payouts, 0) > 0 THEN 'partial'
             ELSE 'unpaid'
           END as status
         FROM monthly_earnings me
@@ -1151,7 +1210,7 @@ export async function createCarryoverPayout(carryover: Omit<Carryover, 'id' | 'c
       `INSERT INTO carryovers (user_id, from_month, to_month, amount) 
        VALUES ($1, $2, $3, $4) 
        ON CONFLICT (user_id, from_month, to_month) 
-       DO UPDATE SET amount = EXCLUDED.amount, created_at = CURRENT_TIMESTAMP`,
+       DO UPDATE SET amount = carryovers.amount + EXCLUDED.amount, created_at = CURRENT_TIMESTAMP`,
       [carryover.user_id, carryover.from_month, carryover.to_month, carryover.amount]
     );
 
@@ -1227,41 +1286,91 @@ export function getNextMonth(month: string): string {
   return `${nextDate.getFullYear()}-${String(nextDate.getMonth() + 1).padStart(2, '0')}`;
 }
 
-// Функция для автоматического переноса переплаты на следующий месяц
+// Функция для автоматического переноса переплаты на следующий месяц (каскадно)
 export async function processOverpaymentCarryover(userId: number, month: string, payoutDate: string): Promise<void> {
   try {
-    // Получаем данные о заработке и выплатах за месяц
-    const earnings = await getEarningsForMonth(userId, month);
-    const payouts = await getPayoutsForMonth(userId, month);
-    
-    // Получаем переносы в этот месяц (уменьшают задолженность)
-    const carryoversIn = await getCarryoversToMonth(userId, month);
-    const totalCarryoverIn = carryoversIn.reduce((sum, c) => sum + c.amount, 0);
-    
-    // Рассчитываем эффективный заработок с учетом переносов
-    const effectiveEarnings = earnings + totalCarryoverIn;
-    
-    // Если выплаты больше эффективного заработка, переносим разницу на следующий месяц
-    if (payouts > effectiveEarnings) {
-      const overpayment = payouts - effectiveEarnings;
-      const nextMonth = getNextMonth(month);
-      
-      // Создаем перенос на следующий месяц
-      await createCarryoverPayout({
-        user_id: userId,
-        from_month: month,
-        to_month: nextMonth,
-        amount: overpayment
-      }, payoutDate);
-      
-      console.log(`Перенос переплаты: ${overpayment} ₽ из ${month} в ${nextMonth} для пользователя ${userId}`);
-    } else {
-      // Если переплаты нет, удаляем существующий перенос (если есть)
-      const nextMonth = getNextMonth(month);
-      await deleteCarryover(userId, month, nextMonth);
-    }
+    await processOverpaymentCarryoverOptimized(userId, month, payoutDate);
   } catch (error) {
     console.error('Ошибка при обработке переноса переплаты:', error);
     throw error;
+  }
+}
+
+// Оптимизированная функция для обработки каскадных переносов
+async function processOverpaymentCarryoverOptimized(
+  userId: number, 
+  startMonth: string, 
+  payoutDate: string
+): Promise<void> {
+  let currentMonth = startMonth;
+  let remainingOverpayment = 0;
+  const maxIterations = 12; // Максимум 12 месяцев для предотвращения бесконечного цикла
+  let iteration = 0;
+  
+  // Сначала вычисляем начальную переплату
+  const initialEarnings = await getEarningsForMonth(userId, currentMonth);
+  const initialPayouts = await getPayoutsForMonth(userId, currentMonth);
+  
+  if (initialPayouts <= initialEarnings) {
+    console.log(`Месяц ${currentMonth}: переплаты нет (${initialPayouts} ₽ <= ${initialEarnings} ₽)`);
+    return;
+  }
+  
+  remainingOverpayment = initialPayouts - initialEarnings;
+  console.log(`Начальная переплата в ${currentMonth}: ${remainingOverpayment} ₽`);
+  
+  // Создаем массив переносов для batch-обработки
+  const carryoversToCreate = [];
+  
+  while (remainingOverpayment > 0 && iteration < maxIterations) {
+    iteration++;
+    const nextMonth = getNextMonth(currentMonth);
+    
+    // Получаем заработок следующего месяца
+    const nextMonthEarnings = await getEarningsForMonth(userId, nextMonth);
+    
+    console.log(`Месяц ${nextMonth}: заработок ${nextMonthEarnings} ₽, нужно перенести ${remainingOverpayment} ₽`);
+    
+    // Создаем комментарий для переноса
+    const monthNames = [
+      'январь', 'февраль', 'март', 'апрель', 'май', 'июнь',
+      'июль', 'август', 'сентябрь', 'октябрь', 'ноябрь', 'декабрь'
+    ];
+    
+    const [currentYear, currentMonthNum] = currentMonth.split('-');
+    const currentMonthIndex = parseInt(currentMonthNum) - 1;
+    const currentMonthName = monthNames[currentMonthIndex];
+    
+    const carryoverComment = `Перенос с ${currentMonthName} ${currentYear}`;
+    
+    // Добавляем перенос в список для создания
+    carryoversToCreate.push({
+      user_id: userId,
+      month: nextMonth,
+      amount: remainingOverpayment,
+      date: payoutDate,
+      comment: carryoverComment
+    });
+    
+    // Если заработок следующего месяца покрывает всю переплату
+    if (nextMonthEarnings >= remainingOverpayment) {
+      console.log(`Переплата ${remainingOverpayment} ₽ полностью покрывается заработком ${nextMonthEarnings} ₽ в ${nextMonth}`);
+      remainingOverpayment = 0;
+    } else {
+      // Если заработок не покрывает переплату, переносим остаток дальше
+      remainingOverpayment = remainingOverpayment - nextMonthEarnings;
+      console.log(`Заработок ${nextMonthEarnings} ₽ в ${nextMonth} не покрывает переплату, остается ${remainingOverpayment} ₽`);
+      currentMonth = nextMonth;
+    }
+  }
+  
+  // Создаем все переносы
+  for (const carryover of carryoversToCreate) {
+    await createPayout(carryover);
+    console.log(`Создан перенос: ${carryover.amount} ₽ в ${carryover.month}`);
+  }
+  
+  if (iteration >= maxIterations) {
+    console.warn(`Достигнуто максимальное количество итераций (${maxIterations}) при обработке переносов`);
   }
 }

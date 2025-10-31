@@ -1,3 +1,6 @@
+// Устанавливаем переменную окружения для подключения к базе данных
+process.env.POSTGRES_URL = "postgresql://neondb_owner:npg_FuYknM4g3rji@ep-damp-queen-a4y4suae-pooler.us-east-1.aws.neon.tech/neondb?sslmode=require";
+
 const { createUser, getUserByTelegramId, initDatabase } = require('../src/lib/db.ts');
 
 async function createTestUser() {

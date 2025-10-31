@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import "./globals.css";
 import TelegramWebApp from "@/components/TelegramWebApp";
+import VersionDisplay from "@/components/VersionDisplay";
 import { ServicesProvider } from "@/contexts/ServicesContext";
 
 export const metadata: Metadata = {
@@ -27,6 +28,7 @@ export default function RootLayout({
           <main>
             {children}
           </main>
+          <VersionDisplay />
         </ServicesProvider>
       </body>
     </html>

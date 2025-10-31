@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import "./globals.css";
 import TelegramWebApp from "@/components/TelegramWebApp";
+import { ServicesProvider } from "@/contexts/ServicesContext";
 
 export const metadata: Metadata = {
   title: "Путёвой учёт",
@@ -22,9 +23,11 @@ export default function RootLayout({
       </head>
       <body>
         <TelegramWebApp />
-        <main>
-          {children}
-        </main>
+        <ServicesProvider>
+          <main>
+            {children}
+          </main>
+        </ServicesProvider>
       </body>
     </html>
   );

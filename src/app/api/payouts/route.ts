@@ -8,7 +8,8 @@ import {
   getPayoutsForMonth,
   getUserByTelegramId,
   getPayoutsDataOptimized,
-  getMonthStatus
+  getMonthStatus,
+  processOverpaymentCarryover
 } from '@/lib/db';
 import { getUserFromRequest } from '@/lib/auth-server';
 import { ensureDatabaseInitialized } from '@/lib/global-init';
@@ -83,6 +84,16 @@ export async function POST(request: NextRequest) {
       comment: comment || ''
     });
     console.log('✅ Выплата создана:', payout);
+
+    // Обрабатываем возможный перенос переплаты
+    console.log('🔄 Обрабатываем переносы переплат...');
+    try {
+      await processOverpaymentCarryover(user.id!, month, date);
+      console.log('✅ Переносы обработаны');
+    } catch (carryoverError) {
+      console.error('⚠️ Ошибка при обработке переносов:', carryoverError);
+      // Не прерываем выполнение, так как выплата уже создана
+    }
 
     return NextResponse.json({ payout });
   } catch (error) {

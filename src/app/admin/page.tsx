@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import UserManagement from '@/components/UserManagement';
 import Link from 'next/link';
 import Image from 'next/image';
+import { useServices } from '@/contexts/ServicesContext';
 
 interface Shift {
   id?: number;
@@ -21,6 +22,7 @@ interface Shift {
   brand_steam_price?: number;
   intro_steam_price?: number;
   scrubbing_price?: number;
+  services?: string | { [key: string]: number };
   // Информация о пользователе для админ панели
   first_name?: string;
   last_name?: string;
@@ -37,6 +39,7 @@ interface Version {
 
 export default function AdminPage() {
   const router = useRouter();
+  const { prices } = useServices();
   const [showReports, setShowReports] = useState(false);
   const [showUserManagement, setShowUserManagement] = useState(false);
   const [shifts, setShifts] = useState<Shift[]>([]);
@@ -210,35 +213,57 @@ export default function AdminPage() {
                         <th>Мастер</th>
                         <th>Дата</th>
                         <th>Часы</th>
-                        <th>П</th>
-                        <th>Ф</th>
-                        <th>О</th>
-                        <th>С</th>
+                        {prices
+                          .filter(price => price.name !== 'Почасовая ставка')
+                          .map(price => (
+                            <th key={price.id || price.name}>
+                              {price.name.charAt(0).toUpperCase()}
+                            </th>
+                          ))
+                        }
                         <th>Мастера</th>
                         <th>Итого</th>
                       </tr>
                     </thead>
                     <tbody>
-                      {shifts.map((shift) => (
-                        <tr key={shift.id}>
-                          <td className="user-cell">
-                            <div className="user-info">
-                              <div className="user-name">
-                                {shift.display_name || `${shift.first_name} ${shift.last_name || ''}`.trim()}
+                      {shifts.map((shift) => {
+                        // Парсим данные услуг
+                        let servicesData: { [key: string]: number } = {};
+                        if (shift.services) {
+                          try {
+                            servicesData = typeof shift.services === 'string' 
+                              ? JSON.parse(shift.services) 
+                              : shift.services;
+                          } catch (e) {
+                            console.error('Error parsing services data:', e);
+                          }
+                        }
+
+                        return (
+                          <tr key={shift.id}>
+                            <td className="user-cell">
+                              <div className="user-info">
+                                <div className="user-name">
+                                  {shift.display_name || `${shift.first_name} ${shift.last_name || ''}`.trim()}
+                                </div>
+                                <div className="user-username">@{shift.username}</div>
                               </div>
-                              <div className="user-username">@{shift.username}</div>
-                            </div>
-                          </td>
-                          <td>{formatDate(shift.date)}</td>
-                          <td>{shift.hours}</td>
-                          <td>{shift.steam_bath}</td>
-                          <td>{shift.brand_steam}</td>
-                          <td>{shift.intro_steam}</td>
-                          <td>{shift.scrubbing}</td>
-                          <td>{shift.masters}</td>
-                          <td className="total-cell">{formatCurrency(shift.total)}</td>
-                        </tr>
-                      ))}
+                            </td>
+                            <td>{formatDate(shift.date)}</td>
+                            <td>{shift.hours}</td>
+                            {prices
+                              .filter(price => price.name !== 'Почасовая ставка')
+                              .map(price => (
+                                <td key={price.id || price.name}>
+                                  {servicesData[price.name] || 0}
+                                </td>
+                              ))
+                            }
+                            <td>{shift.masters}</td>
+                            <td className="total-cell">{formatCurrency(shift.total)}</td>
+                          </tr>
+                        );
+                      })}
                     </tbody>
                   </table>
                 )}

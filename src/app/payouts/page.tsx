@@ -251,15 +251,37 @@ export default function PayoutsPage() {
     });
   };
 
-  const getStatusColor = (remaining: number) => {
-    if (remaining <= 0) return 'green';
-    if (remaining < 5000) return 'orange';
-    return 'red';
+  const getStatusColor = (totalPayouts: number, earnings: number) => {
+    if (totalPayouts === 0) return 'red';
+    if (totalPayouts >= earnings) return 'green';
+    return 'orange';
   };
 
-  const getStatusIcon = (remaining: number) => {
-    if (remaining <= 0) return '✓';
+  const getStatusIcon = (totalPayouts: number, earnings: number) => {
     return '●';
+  };
+
+  const getDisplayedPayoutAmount = (payouts: Payout[], currentIndex: number, earnings: number) => {
+    // Рассчитываем накопленную сумму до текущей выплаты (включительно)
+    let accumulatedAmount = 0;
+    for (let i = 0; i <= currentIndex; i++) {
+      accumulatedAmount += payouts[i].amount;
+    }
+    
+    // Рассчитываем накопленную сумму до текущей выплаты (исключительно)
+    let previousAccumulated = 0;
+    for (let i = 0; i < currentIndex; i++) {
+      previousAccumulated += payouts[i].amount;
+    }
+    
+    // Если предыдущие выплаты уже покрыли весь заработок, показываем 0
+    if (previousAccumulated >= earnings) {
+      return 0;
+    }
+    
+    // Если текущая выплата превышает оставшуюся сумму, показываем только оставшуюся часть
+    const remainingToEarn = earnings - previousAccumulated;
+    return Math.min(payouts[currentIndex].amount, remainingToEarn);
   };
 
   const getAvailableYears = () => {
@@ -435,8 +457,8 @@ export default function PayoutsPage() {
                     />
                   </div>
                   <h3 className="month-title">{formatMonth(monthData.month)}</h3>
-                  <div className={`status-indicator ${getStatusColor(monthData.remaining)}`}>
-                    {getStatusIcon(monthData.remaining)}
+                  <div className={`status-indicator ${getStatusColor(monthData.total_payouts || 0, monthData.earnings)}`}>
+                    {getStatusIcon(monthData.total_payouts || 0, monthData.earnings)}
                   </div>
                 </div>
 
@@ -448,7 +470,7 @@ export default function PayoutsPage() {
                   </div>
                   <div className="earnings-simple">
                     <span className="earnings-label">Выплачено:</span>
-                    <span className="earnings-value paid">{(monthData.total_payouts || 0).toLocaleString()} ₽</span>
+                    <span className="earnings-value paid">{Math.min(monthData.total_payouts || 0, monthData.earnings).toLocaleString()} ₽</span>
                   </div>
                   <div className="earnings-simple">
                     <span className="earnings-label">Остаток:</span>
@@ -466,7 +488,7 @@ export default function PayoutsPage() {
                     ></div>
                   </div>
                   <div className="progress-percentage">
-                    {Math.round(monthData.progress || 0)}%
+                    {Math.round(Math.min(100, monthData.progress || 0))}%
                   </div>
                 </div>
 
@@ -497,10 +519,10 @@ export default function PayoutsPage() {
                   <div className="history-section">
                     <h4 className="history-title">История выплат:</h4>
                     <div className="history-list">
-                      {monthData.payouts.map((payout) => (
+                      {monthData.payouts.map((payout, index) => (
                         <div key={payout.id} className="history-item">
                           <div className="history-info">
-                            <div className="history-amount">{payout.amount.toLocaleString()} ₽</div>
+                            <div className="history-amount">{getDisplayedPayoutAmount(monthData.payouts, index, monthData.earnings).toLocaleString()} ₽</div>
                             <div className="history-details">
                               {new Date(payout.date).toLocaleDateString('ru-RU')}
                               {payout.comment && ` • ${payout.comment}`}
@@ -1059,6 +1081,8 @@ export default function PayoutsPage() {
           border-radius: 6px;
           transition: width 0.3s ease;
         }
+
+
 
         .progress-percentage {
           font-weight: 700;

@@ -116,6 +116,9 @@ export interface Shift {
   intro_steam_price: number;
   scrubbing_price: number;
   zaparnik_price: number;
+  // Новые поля для динамических услуг
+  services?: string; // JSON строка с услугами
+  service_prices?: string; // JSON строка с ценами услуг
   created_at?: string;
 }
 
@@ -133,6 +136,15 @@ export interface Payout {
   amount: number;
   date: string; // Дата выплаты
   comment?: string;
+  created_at?: string;
+}
+
+export interface Carryover {
+  id?: number;
+  user_id: number;
+  from_month: string; // Формат: YYYY-MM
+  to_month: string; // Формат: YYYY-MM
+  amount: number;
   created_at?: string;
 }
 
@@ -194,6 +206,13 @@ async function initPostgres() {
       ADD COLUMN IF NOT EXISTS zaparnik_price REAL NOT NULL DEFAULT 0
     `);
 
+    // Добавляем поля для динамических услуг
+    await executeQuery(`
+      ALTER TABLE shifts 
+      ADD COLUMN IF NOT EXISTS services TEXT,
+      ADD COLUMN IF NOT EXISTS service_prices TEXT
+    `);
+
     await executeQuery(`
       CREATE TABLE IF NOT EXISTS prices (
         id SERIAL PRIMARY KEY,
@@ -221,6 +240,19 @@ async function initPostgres() {
         month TEXT PRIMARY KEY,
         closed BOOLEAN NOT NULL DEFAULT FALSE,
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+
+    // Таблица переносов переплат
+    await executeQuery(`
+      CREATE TABLE IF NOT EXISTS carryovers (
+        id SERIAL PRIMARY KEY,
+        user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        from_month TEXT NOT NULL,
+        to_month TEXT NOT NULL,
+        amount REAL NOT NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE(user_id, from_month, to_month)
       )
     `);
 
@@ -419,9 +451,9 @@ export async function getShiftsWithUsers(): Promise<any[]> {
 export async function addShift(shift: Omit<Shift, 'id' | 'created_at'>): Promise<void> {
   try {
     await executeQuery(`
-      INSERT INTO shifts (user_id, date, hours, steam_bath, brand_steam, intro_steam, scrubbing, zaparnik, masters, total, hourly_rate, steam_bath_price, brand_steam_price, intro_steam_price, scrubbing_price, zaparnik_price)
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
-    `, [shift.user_id, shift.date, shift.hours, shift.steam_bath, shift.brand_steam, shift.intro_steam, shift.scrubbing, shift.zaparnik, shift.masters, shift.total, shift.hourly_rate, shift.steam_bath_price, shift.brand_steam_price, shift.intro_steam_price, shift.scrubbing_price, shift.zaparnik_price]);
+      INSERT INTO shifts (user_id, date, hours, steam_bath, brand_steam, intro_steam, scrubbing, zaparnik, masters, total, hourly_rate, steam_bath_price, brand_steam_price, intro_steam_price, scrubbing_price, zaparnik_price, services, service_prices)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18)
+    `, [shift.user_id, shift.date, shift.hours, shift.steam_bath, shift.brand_steam, shift.intro_steam, shift.scrubbing, shift.zaparnik, shift.masters, shift.total, shift.hourly_rate, shift.steam_bath_price, shift.brand_steam_price, shift.intro_steam_price, shift.scrubbing_price, shift.zaparnik_price, shift.services || null, shift.service_prices || null]);
   } catch (error) {
     console.error('Ошибка при добавлении смены:', error);
     throw error;
@@ -902,24 +934,49 @@ export async function getPayoutsDataOptimized(userId: number): Promise<any[]> {
         FROM payouts 
         WHERE user_id = $1
         GROUP BY month
+      ),
+      carryovers_in AS (
+        SELECT 
+          to_month as month,
+          SUM(amount) as carryover_in
+        FROM carryovers 
+        WHERE user_id = $1
+        GROUP BY to_month
+      ),
+      carryovers_out AS (
+        SELECT 
+          from_month as month,
+          SUM(amount) as carryover_out
+        FROM carryovers 
+        WHERE user_id = $1
+        GROUP BY from_month
       )
       SELECT 
         me.month,
         me.earnings,
         COALESCE(mp.total_payouts, 0) as total_payouts,
-        (me.earnings - COALESCE(mp.total_payouts, 0)) as remaining,
+        COALESCE(ci.carryover_in, 0) as carryover_in,
+        COALESCE(co.carryover_out, 0) as carryover_out,
         CASE 
-          WHEN me.earnings > 0 THEN ROUND((COALESCE(mp.total_payouts, 0) / me.earnings) * 100)
+          WHEN COALESCE(co.carryover_out, 0) > 0 THEN 0
+          ELSE (me.earnings + COALESCE(ci.carryover_in, 0) - COALESCE(mp.total_payouts, 0))
+        END as remaining,
+        CASE 
+          WHEN (me.earnings + COALESCE(ci.carryover_in, 0)) > 0 THEN 
+            ROUND((COALESCE(mp.total_payouts, 0) / (me.earnings + COALESCE(ci.carryover_in, 0))) * 100)
           ELSE 0 
         END as progress,
         CASE 
-          WHEN COALESCE(mp.total_payouts, 0) >= me.earnings THEN 'completed'
+          WHEN COALESCE(co.carryover_out, 0) > 0 THEN 'overpaid'
+          WHEN COALESCE(mp.total_payouts, 0) >= (me.earnings + COALESCE(ci.carryover_in, 0)) THEN 'completed'
           WHEN COALESCE(mp.total_payouts, 0) > 0 THEN 'partial'
           ELSE 'none'
         END as status,
         COALESCE(mp.payouts, '[]'::json) as payouts
       FROM monthly_earnings me
       LEFT JOIN monthly_payouts mp ON me.month = mp.month
+      LEFT JOIN carryovers_in ci ON me.month = ci.month
+      LEFT JOIN carryovers_out co ON me.month = co.month
       ORDER BY me.month DESC`,
       [userId]
     );
@@ -1082,6 +1139,129 @@ export async function getMonthsWithShiftsData(): Promise<string[]> {
     return result.rows.map(row => row.month);
   } catch (error) {
     console.error('Ошибка при получении месяцев со сменами:', error);
+    throw error;
+  }
+}
+
+// Функции для работы с переносами переплат
+export async function createCarryoverPayout(carryover: Omit<Carryover, 'id' | 'created_at'>, payoutDate: string): Promise<Payout> {
+  try {
+    // Создаем запись в таблице carryovers
+    await executeQuery(
+      `INSERT INTO carryovers (user_id, from_month, to_month, amount) 
+       VALUES ($1, $2, $3, $4) 
+       ON CONFLICT (user_id, from_month, to_month) 
+       DO UPDATE SET amount = EXCLUDED.amount, created_at = CURRENT_TIMESTAMP`,
+      [carryover.user_id, carryover.from_month, carryover.to_month, carryover.amount]
+    );
+
+    // Создаем выплату в следующем месяце
+    const monthNames = [
+      'января', 'февраля', 'марта', 'апреля', 'мая', 'июня',
+      'июля', 'августа', 'сентября', 'октября', 'ноября', 'декабря'
+    ];
+    
+    const [year, month] = carryover.from_month.split('-');
+    const monthIndex = parseInt(month) - 1;
+    const monthName = monthNames[monthIndex];
+    const comment = `Перенос с ${monthName} ${year}`;
+
+    const payout = await createPayout({
+      user_id: carryover.user_id,
+      month: carryover.to_month,
+      amount: carryover.amount,
+      date: payoutDate,
+      comment: comment
+    });
+
+    return payout;
+  } catch (error) {
+    console.error('Ошибка при создании переноса:', error);
+    throw error;
+  }
+}
+
+export async function getCarryoversToMonth(userId: number, month: string): Promise<Carryover[]> {
+  try {
+    const result = await executeQuery(
+      'SELECT * FROM carryovers WHERE user_id = $1 AND to_month = $2 ORDER BY from_month',
+      [userId, month]
+    );
+    return result.rows as Carryover[];
+  } catch (error) {
+    console.error('Ошибка при получении переносов в месяц:', error);
+    throw error;
+  }
+}
+
+export async function getCarryoversFromMonth(userId: number, month: string): Promise<Carryover[]> {
+  try {
+    const result = await executeQuery(
+      'SELECT * FROM carryovers WHERE user_id = $1 AND from_month = $2 ORDER BY to_month',
+      [userId, month]
+    );
+    return result.rows as Carryover[];
+  } catch (error) {
+    console.error('Ошибка при получении переносов из месяца:', error);
+    throw error;
+  }
+}
+
+export async function deleteCarryover(userId: number, fromMonth: string, toMonth: string): Promise<boolean> {
+  try {
+    const result = await executeQuery(
+      'DELETE FROM carryovers WHERE user_id = $1 AND from_month = $2 AND to_month = $3',
+      [userId, fromMonth, toMonth]
+    );
+    return (result.rowCount || 0) > 0;
+  } catch (error) {
+    console.error('Ошибка при удалении переноса:', error);
+    throw error;
+  }
+}
+
+// Функция для получения следующего месяца
+export function getNextMonth(month: string): string {
+  const [year, monthNum] = month.split('-').map(Number);
+  const nextDate = new Date(year, monthNum, 1); // monthNum уже 0-based после split
+  return `${nextDate.getFullYear()}-${String(nextDate.getMonth() + 1).padStart(2, '0')}`;
+}
+
+// Функция для автоматического переноса переплаты на следующий месяц
+export async function processOverpaymentCarryover(userId: number, month: string, payoutDate: string): Promise<void> {
+  try {
+    // Получаем данные о заработке и выплатах за месяц
+    const earnings = await getEarningsForMonth(userId, month);
+    const payouts = await getPayoutsForMonth(userId, month);
+    
+    // Получаем переносы в этот месяц (уменьшают задолженность)
+    const carryoversIn = await getCarryoversToMonth(userId, month);
+    const totalCarryoverIn = carryoversIn.reduce((sum, c) => sum + c.amount, 0);
+    
+    // Рассчитываем эффективный заработок с учетом переносов
+    const effectiveEarnings = earnings + totalCarryoverIn;
+    
+    // Если выплаты больше эффективного заработка, переносим разницу на следующий месяц
+    if (payouts > effectiveEarnings) {
+      const overpayment = payouts - effectiveEarnings;
+      const nextMonth = getNextMonth(month);
+      
+      // Создаем перенос на следующий месяц
+      await createCarryoverPayout({
+        user_id: userId,
+        from_month: month,
+        to_month: nextMonth,
+        amount: overpayment
+      }, payoutDate);
+      
+      console.log(`Перенос переплаты: ${overpayment} ₽ из ${month} в ${nextMonth} для пользователя ${userId}`);
+    } else {
+      // Если переплаты нет, удаляем существующий перенос (если есть)
+      const nextMonth = getNextMonth(month);
+      await deleteCarryover(userId, month, nextMonth);
+    }
+  } catch (error) {
+    console.error('Ошибка при обработке переноса переплаты:', error);
     throw error;
   }
 }

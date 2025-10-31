@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getPrices, addPrice } from '@/lib/db';
+import { getPrices, addPrice, deletePrice } from '@/lib/db';
 
 export async function GET() {
   try {
@@ -32,6 +32,31 @@ export async function POST(request: NextRequest) {
     });
   } catch (error) {
     console.error('Ошибка при добавлении цены:', error);
+    return NextResponse.json({ error: 'Ошибка сервера' }, { status: 500 });
+  }
+}
+
+export async function DELETE(request: NextRequest) {
+  try {
+    const { searchParams } = new URL(request.url);
+    const id = searchParams.get('id');
+    
+    if (!id) {
+      return NextResponse.json({ error: 'ID услуги обязателен' }, { status: 400 });
+    }
+    
+    const priceId = parseInt(id);
+    if (isNaN(priceId)) {
+      return NextResponse.json({ error: 'Некорректный ID услуги' }, { status: 400 });
+    }
+
+    await deletePrice(priceId);
+    
+    return NextResponse.json({ 
+      message: 'Услуга удалена успешно'
+    });
+  } catch (error) {
+    console.error('Ошибка при удалении услуги:', error);
     return NextResponse.json({ error: 'Ошибка сервера' }, { status: 500 });
   }
 }

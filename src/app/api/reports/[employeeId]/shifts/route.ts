@@ -12,6 +12,7 @@ interface ShiftData {
   scrubbing: number;
   masters: number;
   amount: number;
+  services?: string | { [key: string]: number }; // Добавляем поле services
 }
 
 export async function GET(
@@ -54,6 +55,7 @@ export async function GET(
         scrubbing: shift.scrubbing || 0,       // С
         masters: shift.masters || 1,           // МАСТЕРА
         amount: shift.total,                   // ИТОГО
+        services: shift.services,              // Динамические услуги
       };
     });
 

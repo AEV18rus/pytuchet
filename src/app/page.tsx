@@ -7,19 +7,23 @@ import { useRouter } from 'next/navigation';
 import UserGreeting from '@/components/UserGreeting';
 import { useTelegramAuth } from '@/hooks/useTelegramAuth';
 import { getAuthHeaders, isTelegramWebApp } from '@/lib/auth';
+import { useServices, Price } from '@/contexts/ServicesContext';
 
 interface Shift {
   id?: number;
   date: string;
   hours: number;
-  steam_bath: number;
-  brand_steam: number;
-  intro_steam: number;
-  scrubbing: number;
-  zaparnik: number;
   masters: number;
   total: number;
   hourly_rate?: number;
+  services: { [serviceName: string]: number }; // Динамические услуги
+  service_prices: { [serviceName: string]: number }; // Цены услуг на момент создания смены
+  // Оставляем старые поля для совместимости с существующими данными
+  steam_bath?: number;
+  brand_steam?: number;
+  intro_steam?: number;
+  scrubbing?: number;
+  zaparnik?: number;
   steam_bath_price?: number;
   brand_steam_price?: number;
   intro_steam_price?: number;
@@ -27,45 +31,49 @@ interface Shift {
   zaparnik_price?: number;
 }
 
-interface Price {
-  id?: number;
-  name: string;
-  price: number;
-}
-
 export default function HomePage() {
   const router = useRouter();
   const { isAuthenticated, user, loading: authLoading } = useTelegramAuth();
+  const { prices, getPrice, loading: pricesLoading } = useServices();
   const [shifts, setShifts] = useState<Shift[]>([]);
-  const [prices, setPrices] = useState<Price[]>([]);
   const [loading, setLoading] = useState(true);
   const [expandedRows, setExpandedRows] = useState<Set<number>>(new Set());
-  const [newShift, setNewShift] = useState<Omit<Shift, 'id' | 'total'>>({
-    date: new Date().toISOString().split('T')[0],
-    hours: 0,
-    steam_bath: 0,
-    brand_steam: 0,
-    intro_steam: 0,
-    scrubbing: 0,
-    zaparnik: 0,
-    masters: 2
-  });
-
-  // Принудительная очистка формы при загрузке
-  useEffect(() => {
-    setNewShift({
+  
+  // Инициализируем новую смену с динамическими услугами
+  const initializeNewShift = (): Omit<Shift, 'id' | 'total'> => {
+    const services: { [serviceName: string]: number } = {};
+    const service_prices: { [serviceName: string]: number } = {};
+    
+    // Инициализируем все услуги кроме "Почасовая ставка"
+    prices.forEach(price => {
+      if (price.name !== 'Почасовая ставка') {
+        services[price.name] = 0;
+        service_prices[price.name] = price.price;
+      }
+    });
+    
+    return {
       date: new Date().toISOString().split('T')[0],
       hours: 0,
-      steam_bath: 0,
-      brand_steam: 0,
-      intro_steam: 0,
-      scrubbing: 0,
-      zaparnik: 0,
-      masters: 2
-    });
-  }, []);
+      masters: 2,
+      services,
+      service_prices,
+      hourly_rate: getPrice('Почасовая ставка')
+    };
+  };
 
-  // Загрузка данных
+  const [newShift, setNewShift] = useState<Omit<Shift, 'id' | 'total'>>(initializeNewShift());
+
+  // Обновляем новую смену при изменении цен
+  useEffect(() => {
+    if (!pricesLoading && prices.length > 0) {
+      setNewShift(initializeNewShift());
+    }
+  }, [prices, pricesLoading]);
+
+  // Удаляем старый useEffect, так как теперь используем initializeNewShift
+
+  // Загрузка данных смен (цены теперь загружаются через контекст)
   const loadData = async () => {
     try {
       setLoading(true);
@@ -76,13 +84,10 @@ export default function HomePage() {
 
       const authHeaders = getAuthHeaders();
 
-      const [shiftsResponse, pricesResponse] = await Promise.all([
-        fetch('/api/shifts', { 
-          signal: controller.signal,
-          headers: authHeaders
-        }),
-        fetch('/api/prices', { signal: controller.signal })
-      ]);
+      const shiftsResponse = await fetch('/api/shifts', { 
+        signal: controller.signal,
+        headers: authHeaders
+      });
 
       clearTimeout(timeoutId);
 
@@ -91,13 +96,6 @@ export default function HomePage() {
         setShifts(shiftsData);
       } else {
         console.error('Ошибка загрузки смен:', shiftsResponse.status);
-      }
-
-      if (pricesResponse.ok) {
-        const pricesData = await pricesResponse.json();
-        setPrices(pricesData);
-      } else {
-        console.error('Ошибка загрузки цен:', pricesResponse.status);
       }
     } catch (error) {
       if (error instanceof Error && error.name === 'AbortError') {
@@ -110,31 +108,36 @@ export default function HomePage() {
     }
   };
 
-  // Получение цены по названию
-  const getPrice = (name: string): number => {
-    const price = prices.find(p => p.name === name);
-    return price ? price.price : 0;
-  };
-
   // Расчет общей суммы смены
   const calculateTotal = (shift: Omit<Shift, 'id' | 'total'>): number => {
     const hourlyRate = getPrice('Почасовая ставка');
-    const steamBathPrice = getPrice('Путевое парение');
-    const brandSteamPrice = getPrice('Фирменное парение');
-    const introSteamPrice = getPrice('Ознакомительное парение');
-    const scrubbingPrice = getPrice('Скрабирование');
-    const zaparnikPrice = getPrice('Запарник');
-
     const hourlyTotal = shift.hours * hourlyRate;
     
-    // Сумма всех услуг
-    const servicesTotal = (
-      shift.steam_bath * steamBathPrice +
-      shift.brand_steam * brandSteamPrice +
-      shift.intro_steam * introSteamPrice +
-      shift.scrubbing * scrubbingPrice +
-      shift.zaparnik * zaparnikPrice
-    );
+    // Сумма всех услуг (динамически)
+    let servicesTotal = 0;
+    
+    // Используем новую структуру services, если она есть
+    if (shift.services) {
+      Object.entries(shift.services).forEach(([serviceName, quantity]) => {
+        const price = getPrice(serviceName);
+        servicesTotal += quantity * price;
+      });
+    } else {
+      // Обратная совместимость со старыми данными
+      const steamBathPrice = getPrice('Путевое парение');
+      const brandSteamPrice = getPrice('Фирменное парение');
+      const introSteamPrice = getPrice('Ознакомительное парение');
+      const scrubbingPrice = getPrice('Скрабирование');
+      const zaparnikPrice = getPrice('Запарник');
+
+      servicesTotal = (
+        (shift.steam_bath || 0) * steamBathPrice +
+        (shift.brand_steam || 0) * brandSteamPrice +
+        (shift.intro_steam || 0) * introSteamPrice +
+        (shift.scrubbing || 0) * scrubbingPrice +
+        (shift.zaparnik || 0) * zaparnikPrice
+      );
+    }
     
     // 40% от суммы услуг, деленное на количество мастеров
     const servicesEarnings = (servicesTotal * 0.4) / shift.masters;
@@ -161,16 +164,7 @@ export default function HomePage() {
       if (response.ok) {
         await loadData(); // Перезагружаем данные
         // Сброс формы
-        setNewShift({
-          date: new Date().toISOString().split('T')[0],
-          hours: 8,
-          steam_bath: 0,
-          brand_steam: 0,
-          intro_steam: 0,
-          scrubbing: 0,
-          zaparnik: 0,
-          masters: 1
-        });
+        setNewShift(initializeNewShift());
       } else {
         const errorData = await response.json();
         alert(`Ошибка при добавлении смены: ${errorData.error || 'Попробуйте еще раз.'}`);
@@ -965,61 +959,31 @@ export default function HomePage() {
             
             <h3 style={{color: 'var(--primary-color)', marginBottom: '15px', fontSize: '1.2em', fontWeight: '600'}}>Банные услуги</h3>
             <div className="services-grid">
-              <div className="input-group">
-                <label className="input-label">Путевое парение ({getPrice('Путевое парение')}₽)</label>
-                <input
-                  className="input-field"
-                  type="number"
-                  min="0"
-                  value={newShift.steam_bath === 0 ? '' : newShift.steam_bath.toString()}
-                  onChange={(e) => setNewShift({ ...newShift, steam_bath: Number(e.target.value) || 0 })}
-                  placeholder=""
-                />
-              </div>
-              <div className="input-group">
-                <label className="input-label">Фирменное парение ({getPrice('Фирменное парение')}₽)</label>
-                <input
-                  className="input-field"
-                  type="number"
-                  min="0"
-                  value={newShift.brand_steam === 0 ? '' : newShift.brand_steam.toString()}
-                  onChange={(e) => setNewShift({ ...newShift, brand_steam: Number(e.target.value) || 0 })}
-                  placeholder=""
-                />
-              </div>
-              <div className="input-group">
-                <label className="input-label">Ознакомительное ({getPrice('Ознакомительное парение')}₽)</label>
-                <input
-                  className="input-field"
-                  type="number"
-                  min="0"
-                  value={newShift.intro_steam === 0 ? '' : newShift.intro_steam.toString()}
-                  onChange={(e) => setNewShift({ ...newShift, intro_steam: Number(e.target.value) || 0 })}
-                  placeholder=""
-                />
-              </div>
-              <div className="input-group">
-                <label className="input-label">Скрабирование ({getPrice('Скрабирование')}₽)</label>
-                <input
-                  className="input-field"
-                  type="number"
-                  min="0"
-                  value={newShift.scrubbing === 0 ? '' : newShift.scrubbing.toString()}
-                  onChange={(e) => setNewShift({ ...newShift, scrubbing: Number(e.target.value) || 0 })}
-                  placeholder=""
-                />
-              </div>
-              <div className="input-group">
-                <label className="input-label">Запарник ({getPrice('Запарник')}₽)</label>
-                <input
-                  className="input-field"
-                  type="number"
-                  min="0"
-                  value={newShift.zaparnik === 0 ? '' : newShift.zaparnik.toString()}
-                  onChange={(e) => setNewShift({ ...newShift, zaparnik: Number(e.target.value) || 0 })}
-                  placeholder=""
-                />
-              </div>
+              {prices
+                .filter(price => price.name !== 'Почасовая ставка')
+                .map(price => (
+                  <div key={price.name} className="input-group">
+                    <label className="input-label">{price.name} ({price.price}₽)</label>
+                    <input
+                      className="input-field"
+                      type="number"
+                      min="0"
+                      value={newShift.services[price.name] === 0 ? '' : newShift.services[price.name]?.toString() || ''}
+                      onChange={(e) => {
+                        const value = Number(e.target.value) || 0;
+                        setNewShift({
+                          ...newShift,
+                          services: {
+                            ...newShift.services,
+                            [price.name]: value
+                          }
+                        });
+                      }}
+                      placeholder=""
+                    />
+                  </div>
+                ))
+              }
             </div>
             
             <div className="form-footer">
@@ -1112,26 +1076,40 @@ export default function HomePage() {
                                       <span className="detail-label">Мастера:</span>
                                       <span className="detail-value">{shift.masters}</span>
                                     </div>
-                                    <div className="detail-item">
-                                      <span className="detail-label">Путевое:</span>
-                                      <span className="detail-value">{shift.steam_bath}</span>
-                                    </div>
-                                    <div className="detail-item">
-                                      <span className="detail-label">Фирменное:</span>
-                                      <span className="detail-value">{shift.brand_steam}</span>
-                                    </div>
-                                    <div className="detail-item">
-                                      <span className="detail-label">Ознакомительное:</span>
-                                      <span className="detail-value">{shift.intro_steam}</span>
-                                    </div>
-                                    <div className="detail-item">
-                                      <span className="detail-label">Скрабирование:</span>
-                                      <span className="detail-value">{shift.scrubbing}</span>
-                                    </div>
-                                    <div className="detail-item">
-                                      <span className="detail-label">Запарник:</span>
-                                      <span className="detail-value">{shift.zaparnik}</span>
-                                    </div>
+                                    {/* Динамический список услуг */}
+                                    {prices
+                                      .filter(price => price.name !== 'Почасовая ставка')
+                                      .map(price => {
+                                        let servicesData: { [key: string]: number } = {};
+                                        
+                                        // Парсим данные услуг из JSON-строки или используем объект
+                                        if (shift.services) {
+                                          if (typeof shift.services === 'string') {
+                                            try {
+                                              servicesData = JSON.parse(shift.services);
+                                            } catch (e) {
+                                              console.error('Ошибка парсинга services:', e);
+                                              servicesData = {};
+                                            }
+                                          } else if (typeof shift.services === 'object') {
+                                            servicesData = shift.services;
+                                          }
+                                        }
+                                        
+                                        const serviceValue = servicesData[price.name] || 0;
+                                        
+                                        // Показываем только услуги с ненулевыми значениями
+                                        if (serviceValue > 0) {
+                                          return (
+                                            <div key={price.name} className="detail-item">
+                                              <span className="detail-label">{price.name}:</span>
+                                              <span className="detail-value">{serviceValue}</span>
+                                            </div>
+                                          );
+                                        }
+                                        return null;
+                                      })
+                                    }
                                   </div>
                                 </div>
                               </td>

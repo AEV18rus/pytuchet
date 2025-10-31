@@ -1,80 +1,163 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
 import Image from 'next/image';
+import { useServices, Price } from '@/contexts/ServicesContext';
 
-interface Prices {
-  hourly_rate: number;
-  steam_bath_price: number;
-  brand_steam_price: number;
-  intro_steam_price: number;
-  scrubbing_price: number;
-  zaparnik_price: number;
+interface Notification {
+  id: number;
+  message: string;
+  type: 'success' | 'error';
 }
 
 export default function PricingPage() {
-  const [prices, setPrices] = useState<Prices>({
-    hourly_rate: 0,
-    steam_bath_price: 0,
-    brand_steam_price: 0,
-    intro_steam_price: 0,
-    scrubbing_price: 0,
-    zaparnik_price: 0
-  });
+  const router = useRouter();
+  const { prices, addPrice, updatePrice, deletePrice, refreshPrices, loading: pricesLoading } = useServices();
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [newServiceName, setNewServiceName] = useState('');
+  const [newServicePrice, setNewServicePrice] = useState('');
+  const [notification, setNotification] = useState<Notification | null>(null);
+  const [deletingServiceId, setDeletingServiceId] = useState<number | null>(null);
+  const [hasChanges, setHasChanges] = useState(false);
+  const [originalServices, setOriginalServices] = useState<Price[]>([]);
+  const [editingServiceId, setEditingServiceId] = useState<number | null>(null);
+  const [editingPrice, setEditingPrice] = useState<string>('');
+  const [updatingServiceId, setUpdatingServiceId] = useState<number | null>(null);
 
-  const [showSuccess, setShowSuccess] = useState(false);
-
-  // Загрузка цен при открытии страницы
-  const loadPrices = async () => {
-    try {
-      const response = await fetch('/api/prices/bulk');
-      if (response.ok) {
-        const pricesData = await response.json();
-        setPrices(pricesData);
-      }
-    } catch (error) {
-      console.error('Ошибка при загрузке цен:', error);
-    }
-  };
-
-  // Сохранение цен
-  const savePrices = async () => {
-    try {
-      const response = await fetch('/api/prices/bulk', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(prices)
-      });
-
-      if (response.ok) {
-        setShowSuccess(true);
-        
-        // Перейти в админ панель через 1 секунду
-        setTimeout(() => {
-          window.location.href = '/admin';
-        }, 1000);
-      } else {
-        const errorData = await response.json();
-        alert(`Ошибка при сохранении цен: ${errorData.error || 'Попробуйте еще раз.'}`);
-      }
-    } catch (error) {
-      console.error('Ошибка при сохранении цен:', error);
-      alert('Ошибка при сохранении цен. Попробуйте еще раз.');
-    }
-  };
-
-  const handleInputChange = (field: keyof Prices, value: string) => {
-    setPrices(prev => ({
-      ...prev,
-      [field]: parseInt(value) || 0
-    }));
-  };
-
+  // Инициализация оригинального состояния при загрузке
   useEffect(() => {
-    loadPrices();
-  }, []);
+    if (prices.length > 0 && originalServices.length === 0) {
+      setOriginalServices([...prices]);
+    }
+  }, [prices, originalServices.length]);
+
+  // Добавление новой услуги
+  const handleAddService = async () => {
+    if (!newServiceName.trim() || !newServicePrice.trim()) {
+      showNotification('Заполните все поля', 'error');
+      return;
+    }
+
+    const price = parseFloat(newServicePrice);
+    if (isNaN(price) || price <= 0) {
+      showNotification('Цена должна быть положительным числом', 'error');
+      return;
+    }
+
+    try {
+      await addPrice({ name: newServiceName.trim(), price });
+      showNotification('Услуга добавлена', 'success');
+      setNewServiceName('');
+      setNewServicePrice('');
+      setIsModalOpen(false);
+      setHasChanges(true); // Отмечаем, что есть изменения
+    } catch (error) {
+      console.error('Ошибка при добавлении услуги:', error);
+      showNotification('Не удалось сохранить', 'error');
+    }
+  };
+
+  // Удаление услуги
+  const handleDeleteService = async (id: number) => {
+    if (!confirm('Вы уверены, что хотите удалить эту услугу?')) {
+      return;
+    }
+
+    try {
+      setDeletingServiceId(id);
+      await deletePrice(id);
+      showNotification('Услуга удалена', 'success');
+      setHasChanges(true); // Отмечаем, что есть изменения
+    } catch (error) {
+      console.error('Ошибка при удалении услуги:', error);
+      showNotification('Не удалось удалить', 'error');
+    } finally {
+      setDeletingServiceId(null);
+    }
+  };
+
+  // Показать уведомление
+  const showNotification = (message: string, type: 'success' | 'error') => {
+    const id = Date.now();
+    setNotification({ id, message, type });
+    
+    // Автоматически удаляем уведомление через 3 секунды
+    setTimeout(() => {
+      setNotification(null);
+    }, 3000);
+  };
+
+  // Закрытие модального окна
+  const closeModal = () => {
+    setIsModalOpen(false);
+    setNewServiceName('');
+    setNewServicePrice('');
+  };
+
+  // Сохранение изменений
+  const saveChanges = () => {
+    setHasChanges(false);
+    setOriginalServices([...prices]);
+    showNotification('Изменения сохранены', 'success');
+    setTimeout(() => {
+      router.push('/admin');
+    }, 1000);
+  };
+
+  // Возврат в админ панель без сохранения
+  const goBackToAdmin = () => {
+    if (hasChanges) {
+      if (confirm('У вас есть несохранённые изменения. Вы уверены, что хотите выйти без сохранения?')) {
+        router.push('/admin');
+      }
+    } else {
+      router.push('/admin');
+    }
+  };
+
+  // Начать редактирование цены
+  const startEditingPrice = (serviceId: number, currentPrice: number) => {
+    setEditingServiceId(serviceId);
+    setEditingPrice(currentPrice.toString());
+  };
+
+  // Отменить редактирование
+  const cancelEditing = () => {
+    setEditingServiceId(null);
+    setEditingPrice('');
+  };
+
+  // Сохранить изменённую цену
+  const saveEditedPrice = async (serviceId: number) => {
+    if (!editingPrice.trim()) {
+      showNotification('Введите цену', 'error');
+      return;
+    }
+
+    const price = parseFloat(editingPrice);
+    if (isNaN(price) || price <= 0) {
+      showNotification('Цена должна быть положительным числом', 'error');
+      return;
+    }
+
+    try {
+      setUpdatingServiceId(serviceId);
+      const service = prices.find(s => s.id === serviceId);
+      if (!service) return;
+
+      await updatePrice(serviceId, { name: service.name, price });
+      showNotification('Цена обновлена', 'success');
+      setHasChanges(true);
+      setEditingServiceId(null);
+      setEditingPrice('');
+    } catch (error) {
+      console.error('Ошибка при обновлении цены:', error);
+      showNotification('Ошибка при обновлении цены', 'error');
+    } finally {
+      setUpdatingServiceId(null);
+    }
+  };
 
 
 
@@ -104,6 +187,8 @@ export default function PricingPage() {
           --shadow-light: rgba(74, 43, 27, 0.1);
           --shadow-medium: rgba(74, 43, 27, 0.15);
           --border-light: rgba(74, 43, 27, 0.2);
+          --success-color: #4CAF50;
+          --error-color: #f44336;
         }
 
         body {
@@ -115,7 +200,7 @@ export default function PricingPage() {
         }
 
         .container {
-          max-width: 800px;
+          max-width: 1000px;
           margin: 0 auto;
           background: var(--background-card);
           border-radius: 15px;
@@ -166,139 +251,480 @@ export default function PricingPage() {
           padding: 30px;
         }
 
-        .pricing-form {
-          background: linear-gradient(135deg, var(--background-section) 0%, rgba(122, 62, 45, 0.08) 100%);
-          border-radius: 12px;
-          padding: 30px;
-          margin-bottom: 30px;
-          border: 2px solid var(--primary-color);
-          box-shadow: 0 8px 25px var(--shadow-medium);
-          position: relative;
-          overflow: hidden;
-        }
-
-        .pricing-form::before {
-          content: '';
-          position: absolute;
-          top: 0;
-          left: 0;
-          right: 0;
-          height: 4px;
-          background: linear-gradient(90deg, var(--primary-color) 0%, var(--secondary-color) 100%);
-        }
-
-        .pricing-form h2 {
-          color: var(--primary-color);
-          margin-bottom: 25px;
-          font-size: 1.6em;
-          font-weight: 700;
-          text-shadow: 0 1px 2px var(--shadow-light);
-        }
-
-        .price-item {
+        .page-header {
           display: flex;
           justify-content: space-between;
           align-items: center;
-          margin-bottom: 24px;
-          padding: 15px;
-          background: var(--background-card);
+          margin-bottom: 30px;
+          flex-wrap: wrap;
+          gap: 15px;
+        }
+
+        .page-title {
+          color: var(--primary-color);
+          font-size: 2rem;
+          font-weight: 700;
+          margin: 0;
+        }
+
+        .add-service-btn {
+          background: linear-gradient(135deg, var(--primary-color) 0%, var(--secondary-color) 100%);
+          color: var(--accent-color);
+          border: none;
+          padding: 12px 24px;
           border-radius: 10px;
-          box-shadow: 0 2px 4px var(--shadow-light);
-          border: 2px solid var(--border-light);
+          font-size: 16px;
+          font-weight: 600;
+          cursor: pointer;
           transition: all 0.3s ease;
+          box-shadow: 0 4px 15px var(--shadow-medium);
+          min-height: 44px;
         }
 
-        .price-item:hover {
-          box-shadow: 0 4px 8px var(--shadow-light);
-          border-color: var(--primary-light);
+        .add-service-btn:hover {
+          transform: translateY(-2px);
+          box-shadow: 0 6px 20px rgba(74, 43, 27, 0.3);
+          background: linear-gradient(135deg, var(--primary-light) 0%, var(--secondary-light) 100%);
         }
 
-        .price-label {
+        .services-table {
+          background: var(--background-card);
+          border-radius: 12px;
+          overflow: hidden;
+          box-shadow: 0 8px 25px var(--shadow-medium);
+          border: 2px solid var(--border-light);
+        }
+
+        .table-header {
+          background: linear-gradient(135deg, var(--background-section) 0%, rgba(122, 62, 45, 0.08) 100%);
+          padding: 20px;
+          border-bottom: 2px solid var(--border-light);
+        }
+
+        .table-row {
+          display: grid;
+          grid-template-columns: 1fr auto auto;
+          gap: 20px;
+          align-items: center;
+          padding: 20px;
+          border-bottom: 1px solid var(--border-light);
+          transition: all 0.3s ease;
+          min-height: 70px;
+        }
+
+        .table-row:last-child {
+          border-bottom: none;
+        }
+
+        .table-row:hover {
+          background: var(--background-section);
+        }
+
+        .table-row.deleting {
+          opacity: 0.5;
+          transform: scale(0.98);
+        }
+
+        .table-row.updating {
+          opacity: 0.7;
+        }
+
+        .price-edit-container {
+          display: flex;
+          flex-direction: column;
+          gap: 8px;
+          width: 100%;
+        }
+
+        .price-edit-input {
+          padding: 8px 12px;
+          border: 2px solid #8B4513;
+          border-radius: 6px;
+          font-size: 14px;
+          font-weight: 600;
+          background: #FFF8DC;
+          color: #8B4513;
+          width: 100%;
+          box-sizing: border-box;
+          transition: all 0.2s ease;
+        }
+
+        .price-edit-input:focus {
+          outline: none;
+          border-color: #A0522D;
+          box-shadow: 0 0 0 3px rgba(139, 69, 19, 0.1);
+        }
+
+        .price-edit-input:disabled {
+          opacity: 0.6;
+          cursor: not-allowed;
+        }
+
+        .price-edit-buttons {
+          display: flex;
+          gap: 6px;
+          justify-content: center;
+        }
+
+        .save-price-btn,
+          .cancel-price-btn {
+            border: none;
+            padding: 8px 12px;
+            border-radius: 10px;
+            font-size: 11px;
+            font-weight: 700;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            box-shadow: 0 4px 15px rgba(139, 69, 19, 0.2);
+            min-width: 36px;
+            height: 36px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+          }
+
+          .save-price-btn {
+            background: linear-gradient(135deg, #8B4513 0%, #A0522D 100%);
+            color: #FFF8DC;
+          }
+
+          .save-price-btn:hover:not(:disabled) {
+            transform: translateY(-3px);
+            box-shadow: 0 8px 25px rgba(139, 69, 19, 0.4);
+            background: linear-gradient(135deg, #A0522D 0%, #CD853F 100%);
+          }
+
+          .cancel-price-btn {
+            background: linear-gradient(135deg, #8B4513 0%, #A0522D 100%);
+            color: #FFF8DC;
+          }
+
+          .cancel-price-btn:hover:not(:disabled) {
+            transform: translateY(-3px);
+            box-shadow: 0 8px 25px rgba(139, 69, 19, 0.4);
+            background: linear-gradient(135deg, #A0522D 0%, #CD853F 100%);
+          }
+
+          .save-price-btn:disabled,
+          .cancel-price-btn:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+            transform: none;
+            box-shadow: 0 4px 15px rgba(139, 69, 19, 0.2);
+          }
+
+        .price-display {
+          cursor: pointer;
+          padding: 8px;
+          border-radius: 6px;
+          transition: all 0.2s ease;
+          position: relative;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          flex-direction: column;
+          gap: 4px;
+        }
+
+        .price-display:hover {
+          background: rgba(139, 69, 19, 0.1);
+          transform: translateY(-1px);
+        }
+
+        .edit-hint {
+          font-size: 11px;
+          color: #8B4513;
+          opacity: 0;
+          transition: opacity 0.2s ease;
+          font-style: italic;
+        }
+
+        .price-display:hover .edit-hint {
+          opacity: 0.7;
+        }
+
+        .service-name {
           font-weight: 600;
           color: var(--font-color);
-          flex: 1;
-          font-size: 14px;
-          text-transform: uppercase;
-          letter-spacing: 0.5px;
+          font-size: 16px;
         }
 
-        .price-input {
-          width: 120px;
+        .service-price {
+          font-weight: 700;
+          color: var(--primary-color);
+          font-size: 18px;
+          text-align: right;
+          min-width: 100px;
+        }
+
+        .delete-btn {
+          background: none;
+          border: none;
+          cursor: pointer;
+          padding: 8px;
+          border-radius: 8px;
+          transition: all 0.3s ease;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          min-width: 44px;
+          min-height: 44px;
+        }
+
+        .delete-btn:hover {
+          background: rgba(244, 67, 54, 0.1);
+          transform: scale(1.1);
+        }
+
+        .delete-btn:disabled {
+          opacity: 0.5;
+          cursor: not-allowed;
+        }
+
+        .loading {
+          text-align: center;
+          padding: 40px;
+          color: var(--primary-color);
+          font-size: 18px;
+        }
+
+        .empty-state {
+          text-align: center;
+          padding: 60px 20px;
+          color: var(--primary-color);
+        }
+
+        .empty-state h3 {
+          font-size: 24px;
+          margin-bottom: 10px;
+        }
+
+        .empty-state p {
+          font-size: 16px;
+          opacity: 0.7;
+        }
+
+        /* Модальное окно */
+        .modal-overlay {
+          position: fixed;
+          top: 0;
+          left: 0;
+          right: 0;
+          bottom: 0;
+          background: rgba(0, 0, 0, 0.5);
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          z-index: 1000;
+          padding: 20px;
+        }
+
+        .modal {
+          background: var(--background-card);
+          border-radius: 15px;
+          padding: 30px;
+          width: 100%;
+          max-width: 500px;
+          box-shadow: 0 20px 40px rgba(0, 0, 0, 0.3);
+          animation: modalAppear 0.3s ease;
+        }
+
+        @keyframes modalAppear {
+          from {
+            opacity: 0;
+            transform: scale(0.9) translateY(-20px);
+          }
+          to {
+            opacity: 1;
+            transform: scale(1) translateY(0);
+          }
+        }
+
+        .modal-header {
+          margin-bottom: 25px;
+        }
+
+        .modal-title {
+          color: var(--primary-color);
+          font-size: 24px;
+          font-weight: 700;
+          margin: 0;
+        }
+
+        .form-group {
+          margin-bottom: 20px;
+        }
+
+        .form-label {
+          display: block;
+          margin-bottom: 8px;
+          color: var(--font-color);
+          font-weight: 600;
+          font-size: 14px;
+        }
+
+        .form-input {
+          width: 100%;
           padding: 14px 16px;
           border: 2px solid var(--border-light);
           border-radius: 10px;
           font-size: 16px;
-          text-align: right;
           background: var(--background-card);
           color: var(--font-color);
           transition: all 0.3s ease;
           box-shadow: 0 2px 4px var(--shadow-light);
+          min-height: 44px;
         }
 
-        .price-input:focus {
+        .form-input:focus {
           outline: none;
           border-color: var(--primary-color);
           box-shadow: 0 0 0 4px rgba(74, 43, 27, 0.1), 0 4px 12px var(--shadow-medium);
           transform: translateY(-1px);
         }
 
-        .price-input:hover {
-          border-color: var(--primary-light);
-          box-shadow: 0 4px 8px var(--shadow-light);
+        .modal-actions {
+          display: flex;
+          gap: 15px;
+          justify-content: flex-end;
+          margin-top: 30px;
         }
 
-        .currency {
-          margin-left: 8px;
-          color: var(--primary-color);
+        .btn-secondary {
+          background: var(--background-section);
+          color: var(--font-color);
+          border: 2px solid var(--border-light);
+          padding: 12px 24px;
+          border-radius: 10px;
+          font-size: 16px;
           font-weight: 600;
+          cursor: pointer;
+          transition: all 0.3s ease;
+          min-height: 44px;
         }
 
-        .btn {
+        .btn-secondary:hover {
+          background: var(--accent-light);
+          border-color: var(--primary-light);
+        }
+
+        .btn-primary {
           background: linear-gradient(135deg, var(--primary-color) 0%, var(--secondary-color) 100%);
           color: var(--accent-color);
           border: none;
-          padding: 16px 32px;
+          padding: 12px 24px;
           border-radius: 10px;
           font-size: 16px;
-          font-weight: 700;
+          font-weight: 600;
           cursor: pointer;
           transition: all 0.3s ease;
-          width: 100%;
-          text-transform: uppercase;
-          letter-spacing: 0.5px;
           box-shadow: 0 4px 15px var(--shadow-medium);
-          margin-top: 20px;
+          min-height: 44px;
         }
 
-        .btn:hover {
-          transform: translateY(-3px);
-          box-shadow: 0 8px 25px rgba(74, 43, 27, 0.4);
+        .btn-primary:hover {
+          transform: translateY(-2px);
+          box-shadow: 0 6px 20px rgba(74, 43, 27, 0.3);
           background: linear-gradient(135deg, var(--primary-light) 0%, var(--secondary-light) 100%);
         }
 
-        .btn:active {
-          transform: translateY(-1px);
-          box-shadow: 0 4px 15px var(--shadow-medium);
+        /* Уведомления */
+        .notifications {
+          position: fixed;
+          top: 20px;
+          right: 20px;
+          z-index: 2000;
+          display: flex;
+          flex-direction: column;
+          gap: 10px;
         }
 
-        .success-message {
-          background: linear-gradient(135deg, var(--accent-light) 0%, var(--accent-color) 100%);
-          color: var(--primary-color);
-          padding: 16px;
+        .notification {
+          padding: 15px 20px;
           border-radius: 10px;
-          margin-top: 20px;
-          text-align: center;
-          border: 2px solid var(--primary-color);
-          box-shadow: 0 4px 15px var(--shadow-light);
+          color: white;
           font-weight: 600;
+          box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
+          animation: notificationSlide 0.3s ease;
+          min-width: 250px;
         }
 
+        .notification.success {
+          background: var(--success-color);
+        }
+
+        .notification.error {
+          background: var(--error-color);
+        }
+
+        @keyframes notificationSlide {
+          from {
+            opacity: 0;
+            transform: translateX(100%);
+          }
+          to {
+            opacity: 1;
+            transform: translateX(0);
+          }
+        }
+
+        .action-buttons {
+          display: flex;
+          gap: 15px;
+          justify-content: center;
+          margin-top: 30px;
+          padding: 20px 0;
+        }
+
+        .back-btn, .save-btn {
+          padding: 12px 30px;
+          border: none;
+          border-radius: 8px;
+          font-size: 16px;
+          font-weight: 500;
+          cursor: pointer;
+          transition: all 0.3s ease;
+          min-width: 120px;
+        }
+
+        .back-btn {
+          background: #f5f5f5;
+          color: #666;
+          border: 2px solid #ddd;
+        }
+
+        .back-btn:hover {
+          background: #e8e8e8;
+          border-color: #bbb;
+          transform: translateY(-2px);
+        }
+
+        .save-btn {
+          background: linear-gradient(135deg, #8B4513, #A0522D);
+          color: white;
+          box-shadow: 0 4px 15px rgba(139, 69, 19, 0.3);
+        }
+
+        .save-btn:hover:not(:disabled) {
+          background: linear-gradient(135deg, #A0522D, #CD853F);
+          transform: translateY(-2px);
+          box-shadow: 0 6px 20px rgba(139, 69, 19, 0.4);
+        }
+
+        .save-btn:disabled {
+          background: #ccc;
+          color: #999;
+          cursor: not-allowed;
+          box-shadow: none;
+        }
+
+        /* Адаптивность */
         @media (max-width: 768px) {
           .container {
             margin: 10px;
             border-radius: 15px;
-            padding: 10px;
-            max-width: 100%;
           }
 
           .header {
@@ -307,12 +733,12 @@ export default function PricingPage() {
 
           .header-content {
             flex-direction: column;
-            gap: 10px;
+            gap: 15px;
           }
 
           .logo {
-            width: 100px;
-            height: 100px;
+            width: 80px;
+            height: 80px;
           }
 
           .header-text {
@@ -331,42 +757,101 @@ export default function PricingPage() {
             padding: 20px;
           }
 
-          .pricing-form {
-            padding: 20px;
+          .page-header {
+            flex-direction: column;
+            align-items: stretch;
+            gap: 20px;
           }
 
-          .price-item {
+          .page-title {
+            font-size: 24px;
+            text-align: center;
+          }
+
+          .add-service-btn {
+            width: 100%;
+            padding: 16px;
+            font-size: 18px;
+          }
+
+          .table-row {
+            grid-template-columns: 1fr;
+            gap: 15px;
+            text-align: center;
+            padding: 20px 15px;
+          }
+
+          .service-price {
+            text-align: center;
+            font-size: 20px;
+          }
+
+          .delete-btn {
+            align-self: center;
+            min-width: 48px;
+            min-height: 48px;
+          }
+
+          .modal {
+            margin: 20px;
+            padding: 25px;
+          }
+
+          .modal-actions {
             flex-direction: column;
-            align-items: flex-start;
+          }
+
+          .notifications {
+            left: 20px;
+            right: 20px;
+          }
+
+          .notification {
+            min-width: auto;
+          }
+
+          .action-buttons {
+            flex-direction: column;
+            gap: 10px;
+            padding: 15px 0;
+          }
+
+          .back-btn, .save-btn {
+            width: 100%;
+            padding: 15px;
+            font-size: 18px;
+          }
+
+          .price-edit-container {
             gap: 10px;
           }
 
-          .price-label {
-            font-size: 14px;
-          }
-
-          .price-input {
-            width: 100%;
+          .price-edit-input {
+            padding: 10px 14px;
             font-size: 16px;
-            padding: 12px;
-            min-height: 44px;
           }
 
-          .btn {
-            font-size: 16px;
-            padding: 12px 20px;
-            min-height: 44px;
-            width: 100%;
-            margin-bottom: 10px;
+          .price-edit-buttons {
+            gap: 8px;
           }
 
-          .success-message {
-            font-size: 14px;
+          .save-price-btn,
+            .cancel-price-btn {
+              min-width: 44px;
+              height: 44px;
+              font-size: 12px;
+              padding: 10px 14px;
+            }
+
+          .edit-hint {
+            font-size: 12px;
+          }
+
+          .price-display {
             padding: 10px;
+            gap: 6px;
           }
         }
-
-
       `}</style>
 
       <div className="container">
@@ -389,119 +874,177 @@ export default function PricingPage() {
         </div>
 
         <div className="content">
-          <div className="pricing-form">
-            <h2>Цены на услуги</h2>
-            
-            <div className="price-item">
-              <label className="price-label" htmlFor="hourlyRate">Цена часа:</label>
-              <div>
-                <input
-                  type="number"
-                  id="hourlyRate"
-                  className="price-input"
-                  value={prices.hourly_rate}
-                  min="0"
-                  step="50"
-                  onChange={(e) => handleInputChange('hourly_rate', e.target.value)}
-                />
-                <span className="currency">₽</span>
-              </div>
-            </div>
+          <div className="page-header">
+            <h2 className="page-title">Цены</h2>
+            <button 
+              className="add-service-btn"
+              onClick={() => setIsModalOpen(true)}
+            >
+              Добавить услугу
+            </button>
+          </div>
 
-            <div className="price-item">
-              <label className="price-label" htmlFor="steamBathPrice">Путевое парение:</label>
-              <div>
-                <input
-                  type="number"
-                  id="steamBathPrice"
-                  className="price-input"
-                  value={prices.steam_bath_price}
-                  min="0"
-                  step="100"
-                  onChange={(e) => handleInputChange('steam_bath_price', e.target.value)}
-                />
-                <span className="currency">₽</span>
+          <div className="services-table">
+            {pricesLoading ? (
+              <div className="loading">Загрузка...</div>
+            ) : prices.length === 0 ? (
+              <div className="empty-state">
+                <h3>Услуги не найдены</h3>
+                <p>Добавьте первую услугу, нажав кнопку "Добавить услугу"</p>
               </div>
-            </div>
+            ) : (
+              <>
+                <div className="table-header">
+                  <div className="table-row">
+                    <div className="service-name" style={{ fontWeight: 700, fontSize: '18px' }}>
+                      Название услуги
+                    </div>
+                    <div className="service-price" style={{ fontWeight: 700, fontSize: '18px' }}>
+                      Цена
+                    </div>
+                    <div style={{ width: '44px' }}></div>
+                  </div>
+                </div>
+                {prices.map((service) => (
+                  <div 
+                    key={service.id} 
+                    className={`table-row ${deletingServiceId === service.id ? 'deleting' : ''} ${updatingServiceId === service.id ? 'updating' : ''}`}
+                  >
+                    <div className="service-name">{service.name}</div>
+                    <div className="service-price">
+                      {editingServiceId === service.id ? (
+                        <div className="price-edit-container">
+                          <input
+                            type="number"
+                            value={editingPrice}
+                            onChange={(e) => setEditingPrice(e.target.value)}
+                            className="price-edit-input"
+                            placeholder="Цена"
+                            min="0"
+                            step="0.01"
+                            disabled={updatingServiceId === service.id}
+                          />
+                          <div className="price-edit-buttons">
+                            <button
+                              className="save-price-btn"
+                              onClick={() => service.id && saveEditedPrice(service.id)}
+                              disabled={updatingServiceId === service.id}
+                              title="Сохранить цену"
+                            >
+                              ✓
+                            </button>
+                            <button
+                              className="cancel-price-btn"
+                              onClick={cancelEditing}
+                              disabled={updatingServiceId === service.id}
+                              title="Отменить"
+                            >
+                              ✕
+                            </button>
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="price-display" onClick={() => service.id && startEditingPrice(service.id, service.price)}>
+                          {service.price} ₽
+                          <span className="edit-hint">Нажмите для редактирования</span>
+                        </div>
+                      )}
+                    </div>
+                    <button
+                      className="delete-btn"
+                      onClick={() => service.id && handleDeleteService(service.id)}
+                      disabled={deletingServiceId === service.id || editingServiceId === service.id}
+                      title="Удалить услугу"
+                    >
+                      <img src="/trash.svg" alt="Удалить" width="24" height="24" />
+                    </button>
+                  </div>
+                ))}
+              </>
+            )}
+          </div>
+          </div>
 
-            <div className="price-item">
-              <label className="price-label" htmlFor="brandSteamPrice">Фирменное парение:</label>
-              <div>
-                <input
-                  type="number"
-                  id="brandSteamPrice"
-                  className="price-input"
-                  value={prices.brand_steam_price}
-                  min="0"
-                  step="100"
-                  onChange={(e) => handleInputChange('brand_steam_price', e.target.value)}
-                />
-                <span className="currency">₽</span>
-              </div>
-            </div>
-
-            <div className="price-item">
-              <label className="price-label" htmlFor="introSteamPrice">Ознакомительное парение:</label>
-              <div>
-                <input
-                  type="number"
-                  id="introSteamPrice"
-                  className="price-input"
-                  value={prices.intro_steam_price}
-                  min="0"
-                  step="100"
-                  onChange={(e) => handleInputChange('intro_steam_price', e.target.value)}
-                />
-                <span className="currency">₽</span>
-              </div>
-            </div>
-
-            <div className="price-item">
-              <label className="price-label" htmlFor="scrubbingPrice">Скрабирование:</label>
-              <div>
-                <input
-                  type="number"
-                  id="scrubbingPrice"
-                  className="price-input"
-                  value={prices.scrubbing_price}
-                  min="0"
-                  step="50"
-                  onChange={(e) => handleInputChange('scrubbing_price', e.target.value)}
-                />
-                <span className="currency">₽</span>
-              </div>
-            </div>
-
-            <div className="price-item">
-              <label className="price-label" htmlFor="zaparnikPrice">Запарник:</label>
-              <div>
-                <input
-                  type="number"
-                  id="zaparnikPrice"
-                  className="price-input"
-                  value={prices.zaparnik_price}
-                  min="0"
-                  step="50"
-                  onChange={(e) => handleInputChange('zaparnik_price', e.target.value)}
-                />
-                <span className="currency">₽</span>
-              </div>
-            </div>
-
-            <button type="button" className="btn" onClick={savePrices}>
+          {/* Кнопки сохранения и возврата */}
+          <div className="action-buttons">
+            <button 
+              className="back-btn"
+              onClick={goBackToAdmin}
+            >
+              Назад
+            </button>
+            <button 
+              className="save-btn"
+              onClick={saveChanges}
+              disabled={!hasChanges}
+            >
               Сохранить
             </button>
-
-            {showSuccess && (
-              <div className="success-message">
-                Цены успешно сохранены!
-              </div>
-            )}
-
-
           </div>
         </div>
-      </div>
+
+        {/* Модальное окно */}
+      {isModalOpen && (
+        <div className="modal-overlay" onClick={closeModal}>
+          <div className="modal" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <h3 className="modal-title">Добавить услугу</h3>
+            </div>
+            
+            <div className="form-group">
+              <label className="form-label" htmlFor="serviceName">
+                Название услуги
+              </label>
+              <input
+                type="text"
+                id="serviceName"
+                className="form-input"
+                value={newServiceName}
+                onChange={(e) => setNewServiceName(e.target.value)}
+                placeholder="Введите название услуги"
+                autoFocus
+              />
+            </div>
+
+            <div className="form-group">
+              <label className="form-label" htmlFor="servicePrice">
+                Цена (₽)
+              </label>
+              <input
+                type="number"
+                id="servicePrice"
+                className="form-input"
+                value={newServicePrice}
+                onChange={(e) => setNewServicePrice(e.target.value)}
+                placeholder="Введите цену"
+                min="0"
+                step="0.01"
+              />
+            </div>
+
+            <div className="modal-actions">
+              <button className="btn-secondary" onClick={closeModal}>
+                Отмена
+              </button>
+              <button className="btn-primary" onClick={handleAddService}>
+                Сохранить
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Уведомления */}
+      {notification && (
+        <div className="notifications">
+          <div 
+            key={notification.id} 
+            className={`notification ${notification.type}`}
+          >
+            {notification.message}
+          </div>
+        </div>
+      )}
     </>
   );
 }

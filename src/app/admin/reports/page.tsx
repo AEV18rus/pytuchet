@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import Image from 'next/image';
 import { useRouter } from 'next/navigation';
+import { useServices } from '@/contexts/ServicesContext';
 
 // Интерфейсы данных
 interface Employee {
@@ -33,6 +34,7 @@ interface Shift {
   scrubbing: number;
   masters: number;
   amount: number;
+  services?: string | { [key: string]: number };
 }
 
 interface ShiftLoadingState {
@@ -138,17 +140,21 @@ const getStatusCircle = (status: string) => {
 
 // Сокращения услуг
 const getServiceAbbreviation = (service: string): string => {
-  switch (service.toLowerCase()) {
-    case 'путевое': return 'П';
-    case 'фирменное': return 'Ф';
-    case 'ознакомительное': return 'О';
-    case 'скрабирование': return 'С';
-    default: return service.charAt(0).toUpperCase();
-  }
+  const abbreviations: { [key: string]: string } = {
+    'Парная': 'П',
+    'Фирменный пар': 'Ф',
+    'Ознакомительный пар': 'О',
+    'Скрабирование': 'С',
+    'Заказ': 'З'
+  };
+  
+  return abbreviations[service] || service.charAt(0).toUpperCase();
 };
 
 // Компонент таблицы смен
 function ShiftsTable({ shifts }: { shifts: Shift[] }) {
+  const { prices } = useServices();
+  
   return (
     <div className="mt-4">
       <table className="shifts-table">
@@ -156,27 +162,71 @@ function ShiftsTable({ shifts }: { shifts: Shift[] }) {
           <tr>
             <th>ДАТА</th>
             <th className="text-right">ЧАСЫ</th>
-            <th className="text-center">П</th>
-            <th className="text-center">Ф</th>
-            <th className="text-center">О</th>
-            <th className="text-center">С</th>
+            {prices
+              .filter(price => price.name !== 'Почасовая ставка')
+              .map(price => (
+                <th key={price.id || price.name} className="text-center">
+                  {getServiceAbbreviation(price.name)}
+                </th>
+              ))
+            }
             <th className="text-center">МАСТЕРА</th>
             <th className="text-right">ИТОГО</th>
           </tr>
         </thead>
         <tbody>
-          {shifts.map((shift, index) => (
-            <tr key={shift.id} className="shift-row">
-              <td>{formatDate(shift.date)}</td>
-              <td className="text-right">{shift.hours}</td>
-              <td className="text-center">{shift.steamBath}</td>
-              <td className="text-center">{shift.brandSteam}</td>
-              <td className="text-center">{shift.introSteam}</td>
-              <td className="text-center">{shift.scrubbing}</td>
-              <td className="text-center">{shift.masters}</td>
-              <td className="text-right" style={{fontWeight:700}}>{formatCurrency(shift.amount)}</td>
-            </tr>
-          ))}
+          {shifts.map((shift, index) => {
+            // Парсим данные услуг
+            let servicesData: { [key: string]: number } = {};
+            if (shift.services) {
+              try {
+                servicesData = typeof shift.services === 'string' 
+                  ? JSON.parse(shift.services) 
+                  : shift.services;
+              } catch (e) {
+                console.error('Error parsing services data:', e);
+              }
+            }
+
+            // Функция для получения количества услуг с fallback на старые поля
+            const getServiceCount = (serviceName: string): number => {
+              // Сначала пытаемся получить из динамических услуг
+              if (servicesData[serviceName] !== undefined) {
+                return servicesData[serviceName];
+              }
+              
+              // Fallback на старые поля
+              switch (serviceName) {
+                case 'Путевое парение':
+                  return shift.steamBath || 0;
+                case 'Фирменное парение':
+                  return shift.brandSteam || 0;
+                case 'Ознакомительное парение':
+                  return shift.introSteam || 0;
+                case 'Скрабирование':
+                  return shift.scrubbing || 0;
+                default:
+                  return 0;
+              }
+            };
+
+            return (
+              <tr key={shift.id} className="shift-row">
+                <td>{formatDate(shift.date)}</td>
+                <td className="text-right">{shift.hours}</td>
+                {prices
+                  .filter(price => price.name !== 'Почасовая ставка')
+                  .map(price => (
+                    <td key={price.id || price.name} className="text-center">
+                      {getServiceCount(price.name)}
+                    </td>
+                  ))
+                }
+                <td className="text-center">{shift.masters}</td>
+                <td className="text-right" style={{fontWeight:700}}>{formatCurrency(shift.amount)}</td>
+              </tr>
+            );
+          })}
         </tbody>
       </table>
     </div>

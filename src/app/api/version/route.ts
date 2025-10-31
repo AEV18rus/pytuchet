@@ -4,7 +4,7 @@ import path from 'path';
 
 export async function GET() {
   try {
-    const versionPath = path.join(process.cwd(), 'version.json');
+    const versionPath = path.join(process.cwd(), 'public', 'version.json');
     
     if (!fs.existsSync(versionPath)) {
       return NextResponse.json({

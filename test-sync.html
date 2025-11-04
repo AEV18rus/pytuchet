@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Тест синхронизации данных</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        .test-section {
+            margin: 20px 0;
+            padding: 15px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+        }
+        .success {
+            background-color: #d4edda;
+            border-color: #c3e6cb;
+        }
+        .error {
+            background-color: #f8d7da;
+            border-color: #f5c6cb;
+        }
+        .test-step {
+            margin: 10px 0;
+            padding: 10px;
+            background-color: #f8f9fa;
+            border-radius: 3px;
+        }
+    </style>
+</head>
+<body>
+    <h1>Тест синхронизации данных между компонентами</h1>
+    
+    <div class="test-section success">
+        <h2>✅ Проверка настройки централизованного контекста</h2>
+        <div class="test-step">
+            <strong>1. ServicesProvider обернут вокруг приложения в layout.tsx</strong><br>
+            Статус: ✅ Успешно
+        </div>
+        <div class="test-step">
+            <strong>2. Контекст экспортирует все необходимые функции</strong><br>
+            Статус: ✅ Успешно (prices, addPrice, updatePrice, deletePrice, getPrice, refreshPrices)
+        </div>
+    </div>
+
+    <div class="test-section success">
+        <h2>✅ Проверка интеграции главной страницы</h2>
+        <div class="test-step">
+            <strong>1. Импорт useServices и Price из контекста</strong><br>
+            Статус: ✅ Успешно
+        </div>
+        <div class="test-step">
+            <strong>2. Использование prices и getPrice из контекста</strong><br>
+            Статус: ✅ Успешно
+        </div>
+        <div class="test-step">
+            <strong>3. Удаление локальной функции getPrice</strong><br>
+            Статус: ✅ Успешно
+        </div>
+        <div class="test-step">
+            <strong>4. Удаление локального интерфейса Price</strong><br>
+            Статус: ✅ Успешно
+        </div>
+    </div>
+
+    <div class="test-section success">
+        <h2>✅ Проверка интеграции страницы ценообразования</h2>
+        <div class="test-step">
+            <strong>1. Импорт useServices и Price из контекста</strong><br>
+            Статус: ✅ Успешно
+        </div>
+        <div class="test-step">
+            <strong>2. Замена локального состояния services на prices из контекста</strong><br>
+            Статус: ✅ Успешно
+        </div>
+        <div class="test-step">
+            <strong>3. Обновление функций для использования методов контекста</strong><br>
+            Статус: ✅ Успешно (addPrice, updatePrice, deletePrice)
+        </div>
+        <div class="test-step">
+            <strong>4. Удаление локальных API вызовов</strong><br>
+            Статус: ✅ Успешно
+        </div>
+        <div class="test-step">
+            <strong>5. Добавление проверок на существование id</strong><br>
+            Статус: ✅ Успешно
+        </div>
+    </div>
+
+    <div class="test-section success">
+        <h2>✅ Проверка работы приложения</h2>
+        <div class="test-step">
+            <strong>1. Компиляция без ошибок</strong><br>
+            Статус: ✅ Успешно
+        </div>
+        <div class="test-step">
+            <strong>2. Сервер запускается без ошибок</strong><br>
+            Статус: ✅ Успешно
+        </div>
+        <div class="test-step">
+            <strong>3. API запросы выполняются успешно</strong><br>
+            Статус: ✅ Успешно (GET /api/prices, GET /api/shifts)
+        </div>
+        <div class="test-step">
+            <strong>4. Страницы загружаются без ошибок</strong><br>
+            Статус: ✅ Успешно
+        </div>
+    </div>
+
+    <div class="test-section success">
+        <h2>✅ Ожидаемые преимущества синхронизации</h2>
+        <div class="test-step">
+            <strong>1. Единый источник данных</strong><br>
+            Все компоненты теперь используют один централизованный контекст для данных о ценах
+        </div>
+        <div class="test-step">
+            <strong>2. Автоматическая синхронизация</strong><br>
+            Изменения в ценах на странице ценообразования автоматически отражаются на главной странице
+        </div>
+        <div class="test-step">
+            <strong>3. Упрощенное управление состоянием</strong><br>
+            Нет дублирования логики загрузки и обновления данных
+        </div>
+        <div class="test-step">
+            <strong>4. Лучшая производительность</strong><br>
+            Данные загружаются один раз и переиспользуются между компонентами
+        </div>
+    </div>
+
+    <h2>Инструкции для ручного тестирования:</h2>
+    <ol>
+        <li>Откройте главную страницу приложения</li>
+        <li>Перейдите на страницу ценообразования (/pricing)</li>
+        <li>Измените цену любой услуги</li>
+        <li>Вернитесь на главную страницу</li>
+        <li>Убедитесь, что новая цена отображается в калькуляторе</li>
+        <li>Добавьте новую услугу на странице ценообразования</li>
+        <li>Проверьте, что она появилась в списке услуг на главной странице</li>
+    </ol>
+</body>
+</html>

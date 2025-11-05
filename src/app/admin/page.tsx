@@ -191,6 +191,7 @@ export default function AdminPage() {
                <button 
                  onClick={() => router.push('/admin/logs')}
                  className="admin-card admin-button"
+                 disabled={true}
                >
                  <div className="card-content">
                    <h3>Системные логи</h3>

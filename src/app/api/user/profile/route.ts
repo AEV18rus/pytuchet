@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getUserFromRequest } from '@/lib/auth-server';
-import { getUserById } from '@/lib/db';
+import { getUserFromRequest, requireAuth } from '@/lib/auth-server';
+import { getUserById, updateUser } from '@/lib/db';
 
 export async function GET(request: NextRequest) {
   try {
@@ -36,6 +36,62 @@ export async function GET(request: NextRequest) {
 
   } catch (error) {
     console.error('Profile error:', error);
+    return NextResponse.json(
+      { error: 'Внутренняя ошибка сервера' },
+      { status: 500 }
+    );
+  }
+}
+
+// Обновление профиля текущего пользователя (сейчас поддерживается только display_name)
+export async function PATCH(request: NextRequest) {
+  try {
+    const user = await requireAuth(request);
+
+    const body = await request.json();
+    const { display_name } = body;
+
+    if (display_name === undefined) {
+      return NextResponse.json(
+        { error: 'Не передано поле display_name' },
+        { status: 400 }
+      );
+    }
+
+    if (typeof display_name !== 'string') {
+      return NextResponse.json(
+        { error: 'display_name должен быть строкой' },
+        { status: 400 }
+      );
+    }
+
+    const trimmed = display_name.trim();
+    if (trimmed.length < 2) {
+      return NextResponse.json(
+        { error: 'Имя должно содержать минимум 2 символа' },
+        { status: 400 }
+      );
+    }
+    if (trimmed.length > 50) {
+      return NextResponse.json(
+        { error: 'Имя не должно превышать 50 символов' },
+        { status: 400 }
+      );
+    }
+
+    // Обновляем пользователя по его telegram_id (updateUser ожидает telegramId)
+    const updated = await updateUser(user.telegram_id, { display_name: trimmed });
+
+    return NextResponse.json({
+      success: true,
+      user: updated,
+      message: 'Имя успешно обновлено'
+    });
+  } catch (error) {
+    if (error instanceof Error && error.message === 'Unauthorized') {
+      return NextResponse.json({ error: 'Требуется авторизация' }, { status: 401 });
+    }
+    console.error('Profile update error:', error);
     return NextResponse.json(
       { error: 'Внутренняя ошибка сервера' },
       { status: 500 }

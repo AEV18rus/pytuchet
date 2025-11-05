@@ -97,6 +97,42 @@ export default function PricingPage() {
     setEditingPrice('');
   };
 
+  const handleSaveAllChanges = async () => {
+    if (readonly) {
+      showNotification('Только админ может изменять цены', 'error');
+      return;
+    }
+    
+    try {
+      setUpdatingServiceId(-1); // Use -1 to indicate batch save
+      
+      // Save all edited prices
+      for (const service of prices) {
+        if (editingServiceId === service.id && editingPrice.trim()) {
+          const price = parseFloat(editingPrice);
+          if (isNaN(price) || price <= 0) {
+            showNotification('Цена должна быть положительным числом', 'error');
+            return;
+          }
+          await updatePrice(service.id!, { name: service.name, price });
+        }
+      }
+      
+      showNotification('Все изменения сохранены', 'success');
+      setEditingServiceId(null);
+      setEditingPrice('');
+    } catch (e) {
+      console.error('Ошибка при сохранении изменений:', e);
+      showNotification('Не удалось сохранить изменения', 'error');
+    } finally {
+      setUpdatingServiceId(null);
+    }
+  };
+
+  const handleBack = () => {
+    router.push('/admin');
+  };
+
   const saveEditedPrice = async (serviceId: number) => {
     if (readonly) {
       showNotification('Только админ может изменять цены', 'error');
@@ -147,7 +183,7 @@ export default function PricingPage() {
         .table-row { display:grid; grid-template-columns: 1fr 180px 60px; align-items:center; padding:12px; border-top:1px solid rgba(74,43,27,0.1); }
         .service-name { font-weight:600; }
         .service-price { }
-        .price-display { cursor: pointer; }
+        .price-display { cursor: pointer; font-weight: bold; color: #4A2B1B; }
         .edit-hint { margin-left: 8px; font-size:12px; color:#7A3E2D; }
         .delete-btn { background:transparent; border:none; cursor:pointer; }
         .delete-btn[disabled] { opacity:0.6; cursor:not-allowed; }
@@ -193,6 +229,7 @@ export default function PricingPage() {
           )}
 
           <div className="page-header">
+            <button className="btn-secondary" onClick={handleBack}>Назад</button>
             <h2 className="page-title">Цены</h2>
             <button className="add-service-btn" onClick={() => setIsModalOpen(true)} disabled={readonly}>Добавить услугу</button>
           </div>
@@ -250,7 +287,7 @@ export default function PricingPage() {
                         </div>
                       ) : (
                         <div className="price-display" onClick={() => !readonly && service.id && startEditingPrice(service.id, service.price)}>
-                          {service.price} ₽ {readonly ? null : <span className="edit-hint">Нажмите для редактирования</span>}
+                          {service.price} ₽
                         </div>
                       )}
                     </div>

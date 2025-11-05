@@ -1,7 +1,6 @@
 'use client';
 
 import React, { useState } from 'react';
-import Image from 'next/image';
 import { useRouter } from 'next/navigation';
 import { useTelegramAuth } from '@/hooks/useTelegramAuth';
 import { getAuthHeaders } from '@/lib/auth';
@@ -18,202 +17,502 @@ export default function AccountPage() {
   const [error, setError] = useState<string | null>(null);
   const [logoutStatus, setLogoutStatus] = useState<string | null>(null);
   const [profileExtras, setProfileExtras] = useState<{ browser_login?: string | null; password_set_at?: string | null } | null>(null);
+  const [displayName, setDisplayName] = useState<string>('');
+  const [isEditingName, setIsEditingName] = useState<boolean>(false);
+  const [nameInput, setNameInput] = useState<string>('');
+  const [nameError, setNameError] = useState<string | null>(null);
+  const [nameStatus, setNameStatus] = useState<string | null>(null);
 
   React.useEffect(() => {
-    if (user) {
-      // Загружаем расширенный профиль (browser_login, password_set_at)
-      const loadProfile = async () => {
-        try {
-          const res = await fetch('/api/user/profile', { headers: getAuthHeaders() });
-          const data = await res.json();
-          if (res.ok && data?.user) {
-            setProfileExtras({
-              browser_login: data.user.browser_login ?? null,
-              password_set_at: data.user.password_set_at ?? null,
-            });
-            // Предзаполняем логин: приоритет browser_login, затем telegram username
-            const pref = (data.user.browser_login ?? user.username ?? '').trim();
-            if (pref) setLogin(pref);
-          } else {
-            // Fallback: только telegram username
-            if (user.username) setLogin(user.username);
-          }
-        } catch {
-          if (user.username) setLogin(user.username);
+    if (loading) return;
+    const checkAuth = async () => {
+      try {
+        const res = await fetch('/api/auth/me', { headers: getAuthHeaders() });
+        if (!res.ok) {
+          router.replace('/login');
         }
-      };
-      loadProfile();
-    }
-  }, [user]);
+      } catch {
+        router.replace('/login');
+      }
+    };
+    checkAuth();
+  }, [loading, router]);
 
-  const handleSavePassword = async () => {
-    setStatus(null);
+  React.useEffect(() => {
+    if (!user || loading) return;
+
+    const loadProfile = async () => {
+      try {
+        const res = await fetch('/api/user/profile', { headers: getAuthHeaders() });
+        const data = await res.json();
+        if (res.ok && data?.user) {
+          setProfileExtras({
+            browser_login: data.user.browser_login ?? null,
+            password_set_at: data.user.password_set_at ?? null,
+          });
+          const pref = (data.user.browser_login ?? user.username ?? '').trim();
+          if (pref) setLogin(pref);
+          const dn = (data.user.display_name ?? `${user.first_name}${user.last_name ? ' ' + user.last_name : ''}`).trim();
+          setDisplayName(dn);
+          setNameInput(dn);
+        } else {
+          if (user.username) setLogin(user.username);
+          const dn = (user.display_name ?? `${user.first_name}${user.last_name ? ' ' + user.last_name : ''}`).trim();
+          setDisplayName(dn);
+          setNameInput(dn);
+        }
+      } catch {
+        if (user.username) setLogin(user.username);
+        const dn = (user.display_name ?? `${user.first_name}${user.last_name ? ' ' + user.last_name : ''}`).trim();
+        setDisplayName(dn);
+        setNameInput(dn);
+      }
+    };
+    loadProfile();
+  }, [user, loading]);
+
+  const handleSaveDisplayName = async () => {
+    setNameError(null);
+    setNameStatus(null);
+    const trimmed = nameInput.trim();
+    if (trimmed.length < 2) {
+      setNameError('Имя минимум 2 символа');
+      return;
+    }
+    if (trimmed.length > 50) {
+      setNameError('Имя не должно превышать 50 символов');
+      return;
+    }
+    try {
+      const res = await fetch('/api/user/profile', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
+        body: JSON.stringify({ display_name: trimmed })
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setDisplayName(trimmed);
+        setIsEditingName(false);
+        setNameStatus('Имя обновлено');
+      } else {
+        setNameError(data.error || 'Ошибка обновления имени');
+      }
+    } catch {
+      setNameError('Ошибка соединения');
+    }
+  };
+
+  const handleSetPassword = async (e: React.FormEvent) => {
+    e.preventDefault();
     setError(null);
+    setStatus(null);
 
-    if (!login || login.trim().length < 3) {
-      setError('Логин должен содержать минимум 3 символа');
-      return;
-    }
-    if (!password || password.length < 8) {
-      setError('Пароль должен содержать минимум 8 символов');
-      return;
-    }
     if (password !== confirmPassword) {
       setError('Пароли не совпадают');
       return;
     }
 
     try {
-      const headers = {
-        'Content-Type': 'application/json',
-        ...getAuthHeaders(),
-      };
-
-      // Заглушка: эндпоинт будет реализован на следующем шаге
-      const response = await fetch('/api/user/set-password', {
-        method: 'POST',
-        headers,
-        body: JSON.stringify({ username: login.trim(), password, currentPassword: profileExtras?.password_set_at ? currentPassword : undefined }),
-      });
-
-      if (!response.ok) {
-        const data = await response.json().catch(() => ({ error: 'Ошибка сохранения пароля' }));
-        throw new Error(data.error || 'Ошибка сохранения пароля');
+      const body: any = { browser_login: login, new_password: password };
+      if (profileExtras?.password_set_at) {
+        body.current_password = currentPassword;
       }
 
-      setStatus('Пароль успешно сохранён. Теперь вы сможете входить в браузере.');
-      // Обновим статус пароля
-      setProfileExtras(prev => ({ ...(prev || {}), password_set_at: new Date().toISOString(), browser_login: login.trim() }));
-      setCurrentPassword('');
-    } catch (e) {
-      setError(e instanceof Error ? e.message : 'Ошибка сохранения пароля');
+      const res = await fetch('/api/user/set-password', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
+        body: JSON.stringify(body),
+      });
+      const data = await res.json();
+
+      if (res.ok) {
+        setStatus('Настройки сохранены');
+        setProfileExtras({ browser_login: login, password_set_at: new Date().toISOString() });
+        setPassword('');
+        setConfirmPassword('');
+        setCurrentPassword('');
+      } else {
+        setError(data.error || 'Ошибка сохранения');
+      }
+    } catch {
+      setError('Ошибка соединения');
     }
   };
 
   const handleLogout = async () => {
-    setLogoutStatus(null);
     try {
-      const res = await fetch('/api/auth/logout', { method: 'POST' });
-      if (!res.ok) throw new Error('Не удалось выйти');
-      setLogoutStatus('Вы вышли из системы');
-      // Перенаправляем на страницу входа
-      setTimeout(() => {
-        window.location.href = '/login';
-      }, 500);
-    } catch (e) {
-      setLogoutStatus(e instanceof Error ? e.message : 'Ошибка выхода');
+      const res = await fetch('/api/auth/logout', { method: 'POST', headers: getAuthHeaders() });
+      if (res.ok) {
+        setLogoutStatus('Вы вышли из системы');
+        router.push('/login');
+      } else {
+        setLogoutStatus('Ошибка выхода');
+      }
+    } catch {
+      setLogoutStatus('Ошибка соединения');
     }
   };
 
+  if (loading) {
+    return (
+      <>
+        <style jsx global>{`
+          * { margin: 0; padding: 0; box-sizing: border-box; }
+          :root {
+            --primary-color: #4A2B1B;
+            --secondary-color: #7A3E2D;
+            --accent-color: #E9D5B5;
+            --background-main: #F2E5D3;
+            --font-color: #2C1A0F;
+            --primary-light: #5D3426;
+            --primary-dark: #3A2015;
+            --secondary-light: #8B4A38;
+            --secondary-dark: #6A3424;
+            --accent-light: #F0E2C8;
+            --accent-dark: #DCC49F;
+            --background-card: #FEFCF8;
+            --background-section: rgba(233, 213, 181, 0.15);
+            --shadow-light: rgba(74, 43, 27, 0.1);
+            --shadow-medium: rgba(74, 43, 27, 0.15);
+            --border-light: rgba(74, 43, 27, 0.2);
+          }
+          body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: linear-gradient(135deg, var(--background-main) 0%, var(--accent-light) 100%); min-height: 100vh; padding: 32px; color: var(--font-color); }
+          .loading-container { display: flex; align-items: center; justify-content: center; height: 100vh; }
+        `}</style>
+        <div className="flex items-center justify-center h-screen">Загрузка...</div>
+      </>
+    );
+  }
+
+  if (!user) {
+    return (
+      <>
+        <style jsx global>{`
+          * { margin: 0; padding: 0; box-sizing: border-box; }
+          body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: linear-gradient(135deg, #F2E5D3 0%, #F0E2C8 100%); min-height: 100vh; padding: 32px; color: #2C1A0F; }
+          .loading-container { display: flex; align-items: center; justify-content: center; height: 100vh; }
+        `}</style>
+        <div className="flex items-center justify-center h-screen">Не авторизован</div>
+      </>
+    );
+  }
+
+  // Основные стили страницы аккаунта
+  const Styles = (
+    <style jsx global>{`
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+  
+    :root {
+      --primary-color: #4A2B1B;
+      --secondary-color: #7A3E2D;
+      --accent-color: #E9D5B5;
+      --background-main: #F2E5D3;
+      --font-color: #2C1A0F;
+      --primary-light: #5D3426;
+      --primary-dark: #3A2015;
+      --secondary-light: #8B4A38;
+      --secondary-dark: #6A3424;
+      --accent-light: #F0E2C8;
+      --accent-dark: #DCC49F;
+      --background-card: #FEFCF8;
+      --background-section: rgba(233, 213, 181, 0.15);
+      --shadow-light: rgba(74, 43, 27, 0.1);
+      --shadow-medium: rgba(74, 43, 27, 0.15);
+      --border-light: rgba(74, 43, 27, 0.2);
+    }
+  
+  body {
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    background: linear-gradient(135deg, var(--background-main) 0%, var(--accent-light) 100%);
+    min-height: 100vh;
+    padding: 32px;
+    color: var(--font-color);
+  }
+  
+  .container {
+    max-width: 760px;
+    margin: 0 auto;
+    background: var(--background-card);
+    border-radius: 18px;
+    box-shadow: 0 12px 24px var(--shadow-light);
+    overflow: hidden;
+  }
+  
+    .header {
+      background: linear-gradient(135deg, var(--primary-color) 0%, var(--secondary-color) 100%);
+      color: var(--accent-color);
+      padding: 40px;
+    }
+
+    .header-content {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 30px;
+      flex-wrap: nowrap;
+      text-align: left;
+    }
+
+    .logo {
+      width: 120px;
+      height: 120px;
+      flex-shrink: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .header h1 {
+      font-size: 2.5em;
+      margin-bottom: 10px;
+      text-shadow: 0 2px 4px rgba(0,0,0,0.3);
+    }
+
+    .header p {
+      font-size: 1.1rem;
+      opacity: 0.9;
+    }
+  
+  .content {
+    padding: 48px;
+  }
+
+  .back-btn { background: #fff; color: var(--font-color); border: 1px solid var(--border-light); padding: 8px 14px; border-radius: 10px; box-shadow: 0 2px 8px var(--shadow-light); cursor: pointer; transition: box-shadow .2s ease, transform .2s ease; display: inline-flex; align-items: center; gap: 6px; text-decoration: none; }
+  .back-btn:hover { transform: translateY(-1px); box-shadow: 0 4px 12px rgba(74,43,27,.25); }
+  
+  .section {
+    background: linear-gradient(135deg, var(--background-section) 0%, rgba(122, 62, 45, 0.06) 100%);
+    border-radius: 12px;
+    padding: 32px;
+    margin-bottom: 40px;
+    border: 1px solid var(--border-light);
+    box-shadow: 0 6px 18px var(--shadow-light);
+    position: relative;
+    overflow: hidden;
+  }
+  
+  .section::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 2px;
+    background: linear-gradient(90deg, var(--primary-color) 0%, var(--secondary-color) 100%);
+  }
+  
+    .section h2 {
+      color: var(--primary-color);
+      margin-bottom: 25px;
+      font-size: 1.6em;
+      font-weight: 700;
+      text-shadow: 0 1px 2px var(--shadow-light);
+    }
+  
+  .form-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+    gap: 24px;
+    margin-bottom: 24px;
+  }
+  
+    .input-group {
+      display: flex;
+      flex-direction: column;
+    }
+  
+    .input-label {
+      font-weight: 600;
+      color: var(--font-color);
+      margin-bottom: 8px;
+      font-size: 14px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+  
+  .input-field {
+    width: 100%;
+    padding: 16px 18px;
+    border: 1px solid var(--border-light);
+    border-radius: 10px;
+    font-size: 16px;
+    background: var(--background-card);
+    color: var(--font-color);
+    transition: box-shadow 0.2s ease, border-color 0.2s ease;
+    box-shadow: 0 1px 3px var(--shadow-light);
+  }
+  
+  .input-field:focus {
+    outline: none;
+    border-color: var(--primary-color);
+    box-shadow: 0 0 0 3px rgba(74, 43, 27, 0.12);
+  }
+
+  .btn {
+    background: linear-gradient(135deg, var(--primary-color) 0%, var(--secondary-color) 100%);
+    color: var(--accent-color);
+    border: none;
+    padding: 12px 24px;
+    border-radius: 10px;
+    font-size: 13px;
+    font-weight: 700;
+    cursor: pointer;
+    transition: all 0.25s ease;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    box-shadow: 0 3px 10px var(--shadow-medium);
+    text-decoration: none;
+    display: inline-block;
+  }
+  
+  .btn:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 6px 18px rgba(74, 43, 27, 0.35);
+    background: linear-gradient(135deg, var(--primary-light) 0%, var(--secondary-light) 100%);
+  }
+  
+    .btn-danger {
+      background: linear-gradient(135deg, #dc2626, #b91c1c);
+    }
+  
+    .btn-danger:hover {
+      background: linear-gradient(135deg, #ef4444, #dc2626);
+    }
+  .buttons-row { display: flex; gap: 12px; margin-top: 6px; flex-wrap: wrap; }
+  .status-line { margin-bottom: 16px; font-size: 14px; color: var(--font-color); }
+
+  .status-message {
+    text-align: center;
+    padding: 12px;
+    margin: 16px 0;
+    border-radius: 8px;
+    font-weight: 500;
+  }
+  
+    .success {
+      background: rgba(34, 197, 94, 0.1);
+      color: #22c55e;
+      border: 1px solid #22c55e;
+    }
+  
+    .error {
+      background: rgba(220, 38, 38, 0.1);
+      color: #dc2626;
+      border: 1px solid #dc2626;
+    }
+  `}</style>
+  );
+
+  // Обновляем JSX для использования новых классов, исправляя синтаксис и размещение кнопки
   return (
     <>
-      <style jsx global>{`
-        * { margin: 0; padding: 0; box-sizing: border-box; }
-        :root {
-          --primary-color: #4A2B1B; --secondary-color: #7A3E2D; --accent-color: #E9D5B5;
-          --background-main: #F2E5D3; --font-color: #2C1A0F; --primary-light: #5D3426; --primary-dark: #3A2015;
-          --secondary-light: #8B4A38; --secondary-dark: #6A3424; --accent-light: #F0E2C8; --accent-dark: #DCC49F;
-          --background-card: #FEFCF8; --background-section: rgba(233, 213, 181, 0.15);
-          --shadow-light: rgba(74, 43, 27, 0.1); --shadow-medium: rgba(74, 43, 27, 0.15); --border-light: rgba(74, 43, 27, 0.2);
-        }
-        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: linear-gradient(135deg, var(--background-main) 0%, var(--accent-light) 100%); min-height: 100vh; padding: 20px; color: var(--font-color); }
-        .container { max-width: 1200px; margin: 0 auto; background: var(--background-card); border-radius: 15px; box-shadow: 0 20px 40px var(--shadow-light); overflow: hidden; }
-        .header { background: linear-gradient(135deg, var(--primary-color) 0%, var(--secondary-color) 100%); color: var(--accent-color); padding: 30px; text-align: center; }
-        .header-content { display: flex; align-items: center; justify-content: center; gap: 20px; }
-        .logo { width: 80px; height: 80px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; }
-        .header h1 { font-size: 2em; text-shadow: 0 2px 4px rgba(0,0,0,0.3); }
-        .content { padding: 30px; }
-        .form-section { background: linear-gradient(135deg, var(--background-section) 0%, rgba(122, 62, 45, 0.08) 100%); border-radius: 12px; padding: 24px; margin-bottom: 24px; border: 2px solid var(--primary-color); box-shadow: 0 8px 25px var(--shadow-medium); position: relative; }
-        .form-section::before { content: ''; position: absolute; top: 0; left: 0; right: 0; height: 4px; background: linear-gradient(90deg, var(--primary-color) 0%, var(--secondary-color) 100%); }
-        .form-section h2 { color: var(--primary-color); margin-bottom: 16px; font-size: 1.4em; font-weight: 700; }
-        .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 16px; }
-        .input-group { display: flex; flex-direction: column; }
-        .input-label { font-weight: 600; color: var(--font-color); margin-bottom: 8px; font-size: 14px; text-transform: uppercase; letter-spacing: 0.5px; }
-        .input-field { width: 100%; padding: 12px 14px; border: 2px solid var(--border-light); border-radius: 10px; font-size: 16px; background: var(--background-card); color: var(--font-color); transition: all 0.3s ease; box-shadow: 0 2px 4px var(--shadow-light); }
-        .input-field:focus { outline: none; border-color: var(--primary-color); box-shadow: 0 0 0 4px rgba(74, 43, 27, 0.1), 0 4px 12px var(--shadow-medium); transform: translateY(-1px); }
-        .btn { background: linear-gradient(135deg, var(--primary-color) 0%, var(--secondary-color) 100%); color: var(--accent-color); border: none; padding: 11px 22px; border-radius: 10px; font-size: 11px; font-weight: 700; cursor: pointer; transition: all 0.3s ease; text-transform: uppercase; letter-spacing: 0.5px; box-shadow: 0 4px 15px var(--shadow-medium); text-decoration: none; display: inline-block; }
-        .btn:hover { transform: translateY(-3px); box-shadow: 0 8px 25px rgba(74, 43, 27, 0.4); background: linear-gradient(135deg, var(--primary-light) 0%, var(--secondary-light) 100%); }
-        .back-section { margin-bottom: 16px; display: flex; justify-content: flex-start; }
-        .back-button { padding: 12px 20px; background: var(--background-card); border: 2px solid var(--border-light); border-radius: 10px; color: var(--primary-color); font-size: 14px; font-weight: 600; cursor: pointer; transition: all 0.3s ease; box-shadow: 0 4px 15px var(--shadow-medium); display: inline-flex; align-items: center; gap: 8px; text-decoration: none; }
-        .back-button:hover { background: var(--primary-color); color: var(--background-card); border-color: var(--primary-color); box-shadow: 0 8px 25px rgba(74, 43, 27, 0.4); transform: translateY(-3px); }
-        .back-button:active { transform: translateY(-1px); box-shadow: 0 4px 15px var(--shadow-medium); }
-        .status { margin-top: 10px; color: #166534; }
-        .error { margin-top: 10px; color: #991b1b; }
-        @media (max-width: 768px) { .content { padding: 20px; } .header { padding: 20px; } }
-      `}</style>
-
+      {Styles}
       <div className="container">
-        <div className="header">
+        <header className="header">
           <div className="header-content">
             <div className="logo">
-              <Image src="/logo.svg" alt="Логотип" width={80} height={80} priority />
+              <img src="/logo.svg" alt="Логотип" style={{ width: '100%', height: '100%' }} />
             </div>
-            <h1>Личный кабинет</h1>
+            <div className="header-text">
+              <h1>Личный кабинет</h1>
+            </div>
           </div>
-        </div>
-
-        <div className="content">
-          <div className="back-section">
-            <button onClick={() => router.push('/')} className="back-button">← Назад</button>
-          </div>
-          {loading ? (
-            <div>Загрузка профиля...</div>
-          ) : (
-            <>
-              <div className="form-section">
-                <h2>Данные профиля</h2>
-                <div className="grid">
-                  <div className="input-group">
-                    <label className="input-label">Telegram ID</label>
-                    <input className="input-field" type="text" value={user?.telegram_id ?? ''} readOnly />
-                  </div>
-                  <div className="input-group">
-                    <label className="input-label">Имя</label>
-                    <input className="input-field" type="text" value={(user?.first_name || '') + (user?.last_name ? ` ${user.last_name}` : '')} readOnly />
-                  </div>
-                  <div className="input-group">
-                    <label className="input-label">Логин (Telegram username)</label>
-                    <input className="input-field" type="text" value={login} onChange={(e) => setLogin(e.target.value)} placeholder="username" />
-                  </div>
-                </div>
+        </header>
+        <main className="content">
+          <button className="back-btn" onClick={() => router.back()}>← Назад</button>
+          <section className="section">
+            <h2>Данные профиля</h2>
+            <div className="form-grid">
+              <div className="input-group">
+                <label className="input-label">Telegram ID</label>
+                <p className="input-field">{user.telegram_id || 'N/A'}</p>
               </div>
-
-              <div className="form-section">
-                <h2>Установка пароля для входа в браузере</h2>
-                {profileExtras?.password_set_at ? (
-                  <div style={{ marginBottom: 12 }}>
-                    Статус: пароль установлен {new Date(profileExtras.password_set_at).toLocaleString()}
+              <div className="input-group">
+                <label className="input-label">Имя</label>
+                {isEditingName ? (
+                  <div>
+                    <input
+                      type="text"
+                      value={nameInput}
+                      onChange={(e) => setNameInput(e.target.value)}
+                      className="input-field"
+                    />
+                    <div className="buttons-row" style={{ marginTop: '10px' }}>
+                      <button type="button" className="btn" onClick={handleSaveDisplayName}>СОХРАНИТЬ</button>
+                      <button type="button" className="btn btn-danger" onClick={() => { setIsEditingName(false); setNameInput(displayName); setNameError(null); }}>ОТМЕНА</button>
+                    </div>
                   </div>
                 ) : (
-                  <div style={{ marginBottom: 12 }}>Статус: пароль ещё не установлен</div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                    <p className="input-field" style={{ flex: '1' }}>{displayName}</p>
+                    <button type="button" className="btn" onClick={() => setIsEditingName(true)}>ИЗМЕНИТЬ</button>
+                  </div>
                 )}
-                <div className="grid">
-                  {profileExtras?.password_set_at && (
-                    <div className="input-group">
-                      <label className="input-label">Текущий пароль</label>
-                      <input className="input-field" type="password" value={currentPassword} onChange={(e) => setCurrentPassword(e.target.value)} placeholder="введите текущий пароль" />
-                    </div>
-                  )}
-                  <div className="input-group">
-                    <label className="input-label">Новый пароль</label>
-                    <input className="input-field" type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="минимум 8 символов" />
-                  </div>
-                  <div className="input-group">
-                    <label className="input-label">Подтверждение пароля</label>
-                    <input className="input-field" type="password" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} placeholder="повторите пароль" />
-                  </div>
-                </div>
-              <div style={{ display: 'flex', gap: 12, marginTop: 12 }}>
-                <button className="btn" onClick={handleSavePassword}>Сохранить пароль</button>
-                <button className="btn" onClick={handleLogout}>Выйти</button>
+                {nameError && <p className="status-message error">{nameError}</p>}
+                {nameStatus && <p className="status-message success">{nameStatus}</p>}
               </div>
-              {status && <div className="status">{status}</div>}
-              {error && <div className="error">{error}</div>}
-              {logoutStatus && <div className="status">{logoutStatus}</div>}
+              <div className="input-group">
+                <label className="input-label">Логин (Telegram username)</label>
+                <p className="input-field">@{user.username || 'N/A'}</p>
+              </div>
             </div>
-            </>
-          )}
-        </div>
+          </section>
+  
+          <section className="section">
+            <h2>Установка пароля для входа в браузере</h2>
+            <p className="status-line">
+              {profileExtras?.password_set_at
+                ? `Статус: пароль установлен ${new Date(profileExtras.password_set_at).toLocaleString()}`
+                : 'Статус: пароль не установлен'}
+            </p>
+            <form onSubmit={handleSetPassword} className="form-grid">
+              <div className="input-group">
+                <label className="input-label">Текущий пароль</label>
+                <input
+                  type="password"
+                  value={currentPassword}
+                  onChange={(e) => setCurrentPassword(e.target.value)}
+                  placeholder="введите текущий пароль"
+                  className="input-field"
+                />
+              </div>
+              <div className="input-group">
+                <label className="input-label">Новый пароль</label>
+                <input
+                  type="password"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  placeholder="минимум 8 символов"
+                  required
+                  className="input-field"
+                />
+              </div>
+              <div className="input-group">
+                <label className="input-label">Подтверждение пароля</label>
+                <input
+                  type="password"
+                  value={confirmPassword}
+                  onChange={(e) => setConfirmPassword(e.target.value)}
+                  placeholder="повторите пароль"
+                  required
+                  className="input-field"
+                />
+              </div>
+              <div className="buttons-row">
+                <button type="submit" className="btn">СОХРАНИТЬ ПАРОЛЬ</button>
+                <button type="button" className="btn btn-danger" onClick={handleLogout}>ВЫЙТИ</button>
+              </div>
+            </form>
+          </section>
+  
+          {error && <p className="status-message error">{error}</p>}
+          {status && <p className="status-message success">{status}</p>}
+          {logoutStatus && <p className="status-message">{logoutStatus}</p>}
+        </main>
       </div>
     </>
   );

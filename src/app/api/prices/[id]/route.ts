@@ -5,13 +5,14 @@ import { requireAdmin } from '@/lib/auth-server';
 
 export async function PUT(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  context: { params: Promise<{ id: string }> }
 ) {
   try {
     await requireAdmin(request);
     await ensureDatabaseInitialized();
 
-    const idNum = parseInt(params.id);
+    const { id } = await context.params;
+    const idNum = parseInt(id);
     if (isNaN(idNum)) {
       return NextResponse.json({ error: 'Некорректный ID услуги' }, { status: 400 });
     }

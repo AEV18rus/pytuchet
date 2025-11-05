@@ -10,7 +10,7 @@ import {
   getPayoutsDataOptimized,
   getMonthStatus
 } from '@/lib/db';
-import { getUserFromRequest } from '@/lib/auth-server';
+import { getUserFromRequest, requireMasterForMutation } from '@/lib/auth-server';
 import { ensureDatabaseInitialized } from '@/lib/global-init';
 
 // GET /api/payouts - получить все выплаты пользователя с данными по месяцам
@@ -40,6 +40,13 @@ export async function POST(request: NextRequest) {
     await ensureDatabaseInitialized();
     console.log('✅ База данных инициализирована');
     
+    // Разрешаем мутации только для мастера (админ/демо запрещены)
+    try {
+      await requireMasterForMutation(request);
+    } catch {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+    }
+
     const user = await getUserFromRequest(request);
     console.log('👤 Пользователь:', user);
     if (!user) {

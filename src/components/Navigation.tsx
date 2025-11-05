@@ -3,14 +3,23 @@
 import React from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
+import { useTelegramAuth } from '@/hooks/useTelegramAuth';
 
 const Navigation: React.FC = () => {
   const pathname = usePathname();
+  const { user } = useTelegramAuth();
 
   const navItems = [
     { href: '/', label: 'Главная', icon: '🏠' },
     { href: '/pricing', label: 'Прайс', icon: '💳' },
+    { href: '/login', label: 'Вход', icon: '🔐' },
+    { href: '/account', label: 'Личный кабинет', icon: '👤' },
   ];
+
+  // Ссылка на админ-панель показывается только администраторам
+  if (user?.role === 'admin') {
+    navItems.push({ href: '/admin', label: 'Админ‑панель', icon: '🛠️' });
+  }
 
   return (
     <nav className="bg-white shadow-lg border-b border-gray-200">

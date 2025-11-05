@@ -2,504 +2,318 @@
 
 import { useState, useEffect } from 'react';
 import Image from 'next/image';
+import { useRouter } from 'next/navigation';
+import { useServices, Price } from '@/contexts/ServicesContext';
+import { useTelegramAuth } from '@/hooks/useTelegramAuth';
 
-interface Prices {
-  hourly_rate: number;
-  steam_bath_price: number;
-  brand_steam_price: number;
-  intro_steam_price: number;
-  scrubbing_price: number;
-  zaparnik_price: number;
+interface Notification {
+  id: number;
+  message: string;
+  type: 'success' | 'error';
 }
 
 export default function PricingPage() {
-  const [prices, setPrices] = useState<Prices>({
-    hourly_rate: 0,
-    steam_bath_price: 0,
-    brand_steam_price: 0,
-    intro_steam_price: 0,
-    scrubbing_price: 0,
-    zaparnik_price: 0
-  });
+  const router = useRouter();
+  const { prices, addPrice, updatePrice, deletePrice, refreshPrices, loading: pricesLoading, error } = useServices();
+  const { user } = useTelegramAuth();
+  const readonly = user?.role !== 'admin';
 
-  const [showSuccess, setShowSuccess] = useState(false);
-
-  // Загрузка цен при открытии страницы
-  const loadPrices = async () => {
-    try {
-      const response = await fetch('/api/prices/bulk');
-      if (response.ok) {
-        const pricesData = await response.json();
-        setPrices(pricesData);
-      }
-    } catch (error) {
-      console.error('Ошибка при загрузке цен:', error);
-    }
-  };
-
-  // Сохранение цен
-  const savePrices = async () => {
-    try {
-      const response = await fetch('/api/prices/bulk', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(prices)
-      });
-
-      if (response.ok) {
-        setShowSuccess(true);
-        
-        // Перейти в админ панель через 1 секунду
-        setTimeout(() => {
-          window.location.href = '/admin';
-        }, 1000);
-      } else {
-        const errorData = await response.json();
-        alert(`Ошибка при сохранении цен: ${errorData.error || 'Попробуйте еще раз.'}`);
-      }
-    } catch (error) {
-      console.error('Ошибка при сохранении цен:', error);
-      alert('Ошибка при сохранении цен. Попробуйте еще раз.');
-    }
-  };
-
-  const handleInputChange = (field: keyof Prices, value: string) => {
-    setPrices(prev => ({
-      ...prev,
-      [field]: parseInt(value) || 0
-    }));
-  };
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [newServiceName, setNewServiceName] = useState('');
+  const [newServicePrice, setNewServicePrice] = useState('');
+  const [notification, setNotification] = useState<Notification | null>(null);
+  const [deletingServiceId, setDeletingServiceId] = useState<number | null>(null);
+  const [editingServiceId, setEditingServiceId] = useState<number | null>(null);
+  const [editingPrice, setEditingPrice] = useState('');
+  const [updatingServiceId, setUpdatingServiceId] = useState<number | null>(null);
 
   useEffect(() => {
-    loadPrices();
-  }, []);
+    // Ensure prices are up-to-date when visiting the page
+    refreshPrices().catch(() => {});
+  }, [refreshPrices]);
 
+  const showNotification = (message: string, type: 'success' | 'error') => {
+    const id = Date.now();
+    setNotification({ id, message, type });
+    setTimeout(() => setNotification(null), 3000);
+  };
 
+  const closeModal = () => {
+    setIsModalOpen(false);
+    setNewServiceName('');
+    setNewServicePrice('');
+  };
+
+  const handleAddService = async () => {
+    if (readonly) {
+      showNotification('Только админ может изменять цены', 'error');
+      return;
+    }
+    if (!newServiceName.trim() || !newServicePrice.trim()) {
+      showNotification('Заполните все поля', 'error');
+      return;
+    }
+    const price = parseFloat(newServicePrice);
+    if (isNaN(price) || price <= 0) {
+      showNotification('Цена должна быть положительным числом', 'error');
+      return;
+    }
+    try {
+      await addPrice({ name: newServiceName.trim(), price });
+      showNotification('Услуга добавлена', 'success');
+      closeModal();
+    } catch (e) {
+      console.error('Ошибка при добавлении услуги:', e);
+      showNotification('Не удалось сохранить', 'error');
+    }
+  };
+
+  const handleDeleteService = async (id: number) => {
+    if (readonly) {
+      showNotification('Только админ может изменять цены', 'error');
+      return;
+    }
+    if (!confirm('Удалить услугу?')) return;
+    try {
+      setDeletingServiceId(id);
+      await deletePrice(id);
+      showNotification('Услуга удалена', 'success');
+    } catch (e) {
+      console.error('Ошибка при удалении услуги:', e);
+      showNotification('Не удалось удалить', 'error');
+    } finally {
+      setDeletingServiceId(null);
+    }
+  };
+
+  const startEditingPrice = (serviceId: number, currentPrice: number) => {
+    if (readonly) return;
+    setEditingServiceId(serviceId);
+    setEditingPrice(currentPrice.toString());
+  };
+
+  const cancelEditing = () => {
+    setEditingServiceId(null);
+    setEditingPrice('');
+  };
+
+  const saveEditedPrice = async (serviceId: number) => {
+    if (readonly) {
+      showNotification('Только админ может изменять цены', 'error');
+      return;
+    }
+    if (!editingPrice.trim()) {
+      showNotification('Введите цену', 'error');
+      return;
+    }
+    const price = parseFloat(editingPrice);
+    if (isNaN(price) || price <= 0) {
+      showNotification('Цена должна быть положительным числом', 'error');
+      return;
+    }
+    try {
+      setUpdatingServiceId(serviceId);
+      const service = prices.find(s => s.id === serviceId);
+      if (!service) return;
+      await updatePrice(serviceId, { name: service.name, price });
+      showNotification('Цена обновлена', 'success');
+      setEditingServiceId(null);
+      setEditingPrice('');
+    } catch (e) {
+      console.error('Ошибка при обновлении цены:', e);
+      showNotification('Не удалось сохранить', 'error');
+    } finally {
+      setUpdatingServiceId(null);
+    }
+  };
 
   return (
     <>
       <style jsx global>{`
-        * {
-          margin: 0;
-          padding: 0;
-          box-sizing: border-box;
-        }
-
-        :root {
-          --primary-color: #4A2B1B;
-          --secondary-color: #7A3E2D;
-          --accent-color: #E9D5B5;
-          --background-main: #F2E5D3;
-          --font-color: #2C1A0F;
-          --primary-light: #5D3426;
-          --primary-dark: #3A2015;
-          --secondary-light: #8B4A38;
-          --secondary-dark: #6A3424;
-          --accent-light: #F0E2C8;
-          --accent-dark: #DCC49F;
-          --background-card: #FEFCF8;
-          --background-section: rgba(233, 213, 181, 0.15);
-          --shadow-light: rgba(74, 43, 27, 0.1);
-          --shadow-medium: rgba(74, 43, 27, 0.15);
-          --border-light: rgba(74, 43, 27, 0.2);
-        }
-
-        body {
-          font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-          background: linear-gradient(135deg, var(--background-main) 0%, var(--accent-light) 100%);
-          min-height: 100vh;
-          padding: 20px;
-          color: var(--font-color);
-        }
-
-        .container {
-          max-width: 800px;
-          margin: 0 auto;
-          background: var(--background-card);
-          border-radius: 15px;
-          box-shadow: 0 20px 40px var(--shadow-light);
-          overflow: hidden;
-        }
-
-        .header {
-          background: linear-gradient(135deg, var(--primary-color) 0%, var(--secondary-color) 100%);
-          color: var(--accent-color);
-          padding: 30px;
-          text-align: center;
-        }
-
-        .header-content {
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          gap: 20px;
-          flex-wrap: nowrap;
-        }
-
-        .logo {
-          width: 120px;
-          height: 120px;
-          flex-shrink: 0;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-        }
-
-        .header-text {
-          text-align: left;
-        }
-
-        .header h1 {
-          font-size: 2.5em;
-          margin-bottom: 10px;
-          text-shadow: 0 2px 4px rgba(0,0,0,0.3);
-        }
-
-        .header p {
-          font-size: 1.1rem;
-          opacity: 0.9;
-        }
-
-        .content {
-          padding: 30px;
-        }
-
-        .pricing-form {
-          background: linear-gradient(135deg, var(--background-section) 0%, rgba(122, 62, 45, 0.08) 100%);
-          border-radius: 12px;
-          padding: 30px;
-          margin-bottom: 30px;
-          border: 2px solid var(--primary-color);
-          box-shadow: 0 8px 25px var(--shadow-medium);
-          position: relative;
-          overflow: hidden;
-        }
-
-        .pricing-form::before {
-          content: '';
-          position: absolute;
-          top: 0;
-          left: 0;
-          right: 0;
-          height: 4px;
-          background: linear-gradient(90deg, var(--primary-color) 0%, var(--secondary-color) 100%);
-        }
-
-        .pricing-form h2 {
-          color: var(--primary-color);
-          margin-bottom: 25px;
-          font-size: 1.6em;
-          font-weight: 700;
-          text-shadow: 0 1px 2px var(--shadow-light);
-        }
-
-        .price-item {
-          display: flex;
-          justify-content: space-between;
-          align-items: center;
-          margin-bottom: 24px;
-          padding: 15px;
-          background: var(--background-card);
-          border-radius: 10px;
-          box-shadow: 0 2px 4px var(--shadow-light);
-          border: 2px solid var(--border-light);
-          transition: all 0.3s ease;
-        }
-
-        .price-item:hover {
-          box-shadow: 0 4px 8px var(--shadow-light);
-          border-color: var(--primary-light);
-        }
-
-        .price-label {
-          font-weight: 600;
-          color: var(--font-color);
-          flex: 1;
-          font-size: 14px;
-          text-transform: uppercase;
-          letter-spacing: 0.5px;
-        }
-
-        .price-input {
-          width: 120px;
-          padding: 14px 16px;
-          border: 2px solid var(--border-light);
-          border-radius: 10px;
-          font-size: 16px;
-          text-align: right;
-          background: var(--background-card);
-          color: var(--font-color);
-          transition: all 0.3s ease;
-          box-shadow: 0 2px 4px var(--shadow-light);
-        }
-
-        .price-input:focus {
-          outline: none;
-          border-color: var(--primary-color);
-          box-shadow: 0 0 0 4px rgba(74, 43, 27, 0.1), 0 4px 12px var(--shadow-medium);
-          transform: translateY(-1px);
-        }
-
-        .price-input:hover {
-          border-color: var(--primary-light);
-          box-shadow: 0 4px 8px var(--shadow-light);
-        }
-
-        .currency {
-          margin-left: 8px;
-          color: var(--primary-color);
-          font-weight: 600;
-        }
-
-        .btn {
-          background: linear-gradient(135deg, var(--primary-color) 0%, var(--secondary-color) 100%);
-          color: var(--accent-color);
-          border: none;
-          padding: 16px 32px;
-          border-radius: 10px;
-          font-size: 16px;
-          font-weight: 700;
-          cursor: pointer;
-          transition: all 0.3s ease;
-          width: 100%;
-          text-transform: uppercase;
-          letter-spacing: 0.5px;
-          box-shadow: 0 4px 15px var(--shadow-medium);
-          margin-top: 20px;
-        }
-
-        .btn:hover {
-          transform: translateY(-3px);
-          box-shadow: 0 8px 25px rgba(74, 43, 27, 0.4);
-          background: linear-gradient(135deg, var(--primary-light) 0%, var(--secondary-light) 100%);
-        }
-
-        .btn:active {
-          transform: translateY(-1px);
-          box-shadow: 0 4px 15px var(--shadow-medium);
-        }
-
-        .success-message {
-          background: linear-gradient(135deg, var(--accent-light) 0%, var(--accent-color) 100%);
-          color: var(--primary-color);
-          padding: 16px;
-          border-radius: 10px;
-          margin-top: 20px;
-          text-align: center;
-          border: 2px solid var(--primary-color);
-          box-shadow: 0 4px 15px var(--shadow-light);
-          font-weight: 600;
-        }
-
-        @media (max-width: 768px) {
-          .container {
-            margin: 10px;
-            border-radius: 15px;
-            padding: 10px;
-            max-width: 100%;
-          }
-
-          .header {
-            padding: 20px;
-          }
-
-          .header-content {
-            flex-direction: column;
-            gap: 10px;
-          }
-
-          .logo {
-            width: 100px;
-            height: 100px;
-          }
-
-          .header-text {
-            text-align: center;
-          }
-
-          .header h1 {
-            font-size: 24px;
-          }
-
-          .header p {
-            font-size: 14px;
-          }
-
-          .content {
-            padding: 20px;
-          }
-
-          .pricing-form {
-            padding: 20px;
-          }
-
-          .price-item {
-            flex-direction: column;
-            align-items: flex-start;
-            gap: 10px;
-          }
-
-          .price-label {
-            font-size: 14px;
-          }
-
-          .price-input {
-            width: 100%;
-            font-size: 16px;
-            padding: 12px;
-            min-height: 44px;
-          }
-
-          .btn {
-            font-size: 16px;
-            padding: 12px 20px;
-            min-height: 44px;
-            width: 100%;
-            margin-bottom: 10px;
-          }
-
-          .success-message {
-            font-size: 14px;
-            padding: 10px;
-          }
-        }
-
-
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { background: #F2E5D3; min-height: 100vh; padding: 20px; color: #2C1A0F; }
+        .container { max-width: 900px; margin: 0 auto; background: #FEFCF8; border-radius: 16px; box-shadow: 0 10px 30px rgba(74,43,27,0.1); overflow: hidden; }
+        .header { background: linear-gradient(135deg,#4A2B1B 0%,#7A3E2D 100%); color: #E9D5B5; padding: 24px; }
+        .header-content { display:flex; align-items:center; gap:16px; }
+        .logo { width: 56px; height: 56px; display:flex; align-items:center; justify-content:center; }
+        .header-text h1 { font-size: 24px; }
+        .content { padding: 24px; }
+        .page-header { display:flex; justify-content: space-between; align-items:center; margin-bottom: 16px; }
+        .page-title { font-size: 22px; font-weight: 700; color: #4A2B1B; }
+        .add-service-btn { background:#4A2B1B; color:#E9D5B5; border:none; padding:10px 16px; border-radius:8px; cursor:pointer; }
+        .add-service-btn[disabled] { opacity:0.6; cursor:not-allowed; }
+        .services-table { border:1px solid rgba(74,43,27,0.2); border-radius:12px; overflow:hidden; }
+        .table-header { background:#F0E2C8; padding:12px; }
+        .table-row { display:grid; grid-template-columns: 1fr 180px 60px; align-items:center; padding:12px; border-top:1px solid rgba(74,43,27,0.1); }
+        .service-name { font-weight:600; }
+        .service-price { }
+        .price-display { cursor: pointer; }
+        .edit-hint { margin-left: 8px; font-size:12px; color:#7A3E2D; }
+        .delete-btn { background:transparent; border:none; cursor:pointer; }
+        .delete-btn[disabled] { opacity:0.6; cursor:not-allowed; }
+        .loading, .empty-state { padding:16px; text-align:center; color:#4A2B1B; }
+        .modal-overlay { position:fixed; inset:0; background:rgba(0,0,0,0.3); display:flex; align-items:center; justify-content:center; }
+        .modal { background:#FEFCF8; width: 380px; max-width: 92vw; border-radius:12px; box-shadow:0 8px 24px rgba(0,0,0,0.2); padding:16px; }
+        .modal-header { margin-bottom: 12px; }
+        .modal-title { font-size:18px; font-weight:700; color:#4A2B1B; }
+        .form-group { margin-bottom:12px; }
+        .form-label { display:block; margin-bottom:6px; font-weight:600; }
+        .form-input { width:100%; padding:10px; border:1px solid rgba(74,43,27,0.2); border-radius:8px; }
+        .modal-actions { display:flex; justify-content:flex-end; gap:8px; margin-top: 8px; }
+        .btn-secondary { background:#E9D5B5; color:#4A2B1B; border:none; padding:8px 12px; border-radius:6px; cursor:pointer; }
+        .btn-primary { background:#4A2B1B; color:#E9D5B5; border:none; padding:8px 12px; border-radius:6px; cursor:pointer; }
+        .notifications { position:fixed; bottom:16px; right:16px; }
+        .notification { padding:10px 14px; border-radius:8px; color:#FEFCF8; }
+        .notification.success { background:#2E7D32; }
+        .notification.error { background:#C62828; }
+        .price-edit-container { display:flex; align-items:center; gap:8px; }
+        .price-edit-input { width:120px; padding:8px; border:1px solid rgba(74,43,27,0.2); border-radius:8px; }
+        .save-price-btn, .cancel-price-btn { border:none; background:#4A2B1B; color:#E9D5B5; padding:6px 10px; border-radius:6px; cursor:pointer; }
+        .save-price-btn[disabled], .cancel-price-btn[disabled] { opacity:0.6; cursor:not-allowed; }
+        .readonly-banner { background:#FFF3CD; color:#856404; border:1px solid #FFEeba; padding:10px; border-radius:8px; margin-bottom: 12px; }
       `}</style>
 
       <div className="container">
         <div className="header">
           <div className="header-content">
-            <div className="logo">
-              <Image 
-                src="/logo.svg" 
-                alt="Логотип" 
-                width={120} 
-                height={120}
-                priority
-              />
+            <div className="logo" onClick={() => router.push('/')} style={{ cursor: 'pointer' }}>
+              <Image src="/logo.svg" alt="Логотип" width={50} height={50} />
             </div>
             <div className="header-text">
               <h1>Путевый Учет</h1>
-              <p>Управление ценами на услуги</p>
             </div>
           </div>
         </div>
 
         <div className="content">
-          <div className="pricing-form">
-            <h2>Цены на услуги</h2>
-            
-            <div className="price-item">
-              <label className="price-label" htmlFor="hourlyRate">Цена часа:</label>
-              <div>
-                <input
-                  type="number"
-                  id="hourlyRate"
-                  className="price-input"
-                  value={prices.hourly_rate}
-                  min="0"
-                  step="50"
-                  onChange={(e) => handleInputChange('hourly_rate', e.target.value)}
-                />
-                <span className="currency">₽</span>
-              </div>
+          {readonly && (
+            <div className="readonly-banner">
+              Только администратор может изменять цены. Просмотр включен.
             </div>
+          )}
 
-            <div className="price-item">
-              <label className="price-label" htmlFor="steamBathPrice">Путевое парение:</label>
-              <div>
-                <input
-                  type="number"
-                  id="steamBathPrice"
-                  className="price-input"
-                  value={prices.steam_bath_price}
-                  min="0"
-                  step="100"
-                  onChange={(e) => handleInputChange('steam_bath_price', e.target.value)}
-                />
-                <span className="currency">₽</span>
-              </div>
-            </div>
-
-            <div className="price-item">
-              <label className="price-label" htmlFor="brandSteamPrice">Фирменное парение:</label>
-              <div>
-                <input
-                  type="number"
-                  id="brandSteamPrice"
-                  className="price-input"
-                  value={prices.brand_steam_price}
-                  min="0"
-                  step="100"
-                  onChange={(e) => handleInputChange('brand_steam_price', e.target.value)}
-                />
-                <span className="currency">₽</span>
-              </div>
-            </div>
-
-            <div className="price-item">
-              <label className="price-label" htmlFor="introSteamPrice">Ознакомительное парение:</label>
-              <div>
-                <input
-                  type="number"
-                  id="introSteamPrice"
-                  className="price-input"
-                  value={prices.intro_steam_price}
-                  min="0"
-                  step="100"
-                  onChange={(e) => handleInputChange('intro_steam_price', e.target.value)}
-                />
-                <span className="currency">₽</span>
-              </div>
-            </div>
-
-            <div className="price-item">
-              <label className="price-label" htmlFor="scrubbingPrice">Скрабирование:</label>
-              <div>
-                <input
-                  type="number"
-                  id="scrubbingPrice"
-                  className="price-input"
-                  value={prices.scrubbing_price}
-                  min="0"
-                  step="50"
-                  onChange={(e) => handleInputChange('scrubbing_price', e.target.value)}
-                />
-                <span className="currency">₽</span>
-              </div>
-            </div>
-
-            <div className="price-item">
-              <label className="price-label" htmlFor="zaparnikPrice">Запарник:</label>
-              <div>
-                <input
-                  type="number"
-                  id="zaparnikPrice"
-                  className="price-input"
-                  value={prices.zaparnik_price}
-                  min="0"
-                  step="50"
-                  onChange={(e) => handleInputChange('zaparnik_price', e.target.value)}
-                />
-                <span className="currency">₽</span>
-              </div>
-            </div>
-
-            <button type="button" className="btn" onClick={savePrices}>
-              Сохранить
-            </button>
-
-            {showSuccess && (
-              <div className="success-message">
-                Цены успешно сохранены!
-              </div>
-            )}
-
-
+          <div className="page-header">
+            <h2 className="page-title">Цены</h2>
+            <button className="add-service-btn" onClick={() => setIsModalOpen(true)} disabled={readonly}>Добавить услугу</button>
           </div>
+
+          <div className="services-table">
+            {pricesLoading ? (
+              <div className="loading">Загрузка...</div>
+            ) : error ? (
+              <div className="empty-state">Ошибка: {error}</div>
+            ) : prices.length === 0 ? (
+              <div className="empty-state">Услуги не найдены. Добавьте первую услугу.</div>
+            ) : (
+              <>
+                <div className="table-header">
+                  <div className="table-row">
+                    <div className="service-name" style={{ fontWeight: 700 }}>Название услуги</div>
+                    <div className="service-price" style={{ fontWeight: 700 }}>Цена</div>
+                    <div style={{ width: '60px' }}></div>
+                  </div>
+                </div>
+                {prices.map((service) => (
+                  <div key={service.id} className={`table-row ${deletingServiceId === service.id ? 'deleting' : ''} ${updatingServiceId === service.id ? 'updating' : ''}`}>
+                    <div className="service-name">{service.name}</div>
+                    <div className="service-price">
+                      {editingServiceId === service.id ? (
+                        <div className="price-edit-container">
+                          <input
+                            type="number"
+                            value={editingPrice}
+                            onChange={(e) => setEditingPrice(e.target.value)}
+                            className="price-edit-input"
+                            placeholder="Цена"
+                            min="0"
+                            step="1"
+                            disabled={updatingServiceId === service.id || readonly}
+                          />
+                          <div className="price-edit-buttons" style={{ display: 'flex', gap: 8 }}>
+                            <button
+                              className="save-price-btn"
+                              onClick={() => service.id && saveEditedPrice(service.id)}
+                              disabled={updatingServiceId === service.id || readonly}
+                              title="Сохранить цену"
+                            >
+                              ✓
+                            </button>
+                            <button
+                              className="cancel-price-btn"
+                              onClick={cancelEditing}
+                              disabled={updatingServiceId === service.id}
+                              title="Отменить"
+                            >
+                              ✕
+                            </button>
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="price-display" onClick={() => !readonly && service.id && startEditingPrice(service.id, service.price)}>
+                          {service.price} ₽ {readonly ? null : <span className="edit-hint">Нажмите для редактирования</span>}
+                        </div>
+                      )}
+                    </div>
+                    <button
+                      className="delete-btn"
+                      onClick={() => service.id && handleDeleteService(service.id)}
+                      disabled={deletingServiceId === service.id || editingServiceId === service.id || readonly}
+                      title="Удалить услугу"
+                    >
+                      <img src="/trash.svg" alt="Удалить" width="24" height="24" />
+                    </button>
+                  </div>
+                ))}
+              </>
+            )}
+          </div>
+
+          {isModalOpen && (
+            <div className="modal-overlay" onClick={closeModal}>
+              <div className="modal" onClick={(e) => e.stopPropagation()}>
+                <div className="modal-header">
+                  <h3 className="modal-title">Добавить услугу</h3>
+                </div>
+                <div className="form-group">
+                  <label className="form-label" htmlFor="serviceName">Название услуги</label>
+                  <input
+                    type="text"
+                    id="serviceName"
+                    className="form-input"
+                    value={newServiceName}
+                    onChange={(e) => setNewServiceName(e.target.value)}
+                    placeholder="Введите название услуги"
+                    autoFocus
+                  />
+                </div>
+                <div className="form-group">
+                  <label className="form-label" htmlFor="servicePrice">Цена (₽)</label>
+                  <input
+                    type="number"
+                    id="servicePrice"
+                    className="form-input"
+                    value={newServicePrice}
+                    onChange={(e) => setNewServicePrice(e.target.value)}
+                    placeholder="Введите цену"
+                    min="0"
+                    step="1"
+                  />
+                </div>
+                <div className="modal-actions">
+                  <button className="btn-secondary" onClick={closeModal}>Отмена</button>
+                  <button className="btn-primary" onClick={handleAddService} disabled={readonly}>Сохранить</button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {notification && (
+            <div className="notifications">
+              <div key={notification.id} className={`notification ${notification.type}`}>
+                {notification.message}
+              </div>
+            </div>
+          )}
         </div>
       </div>
     </>

@@ -5,6 +5,7 @@ export interface AuthenticatedUser {
   last_name?: string;
   username?: string;
   display_name?: string;
+  role?: 'admin' | 'demo' | 'master';
 }
 
 // Функция для получения заголовков авторизации (для клиентской части)

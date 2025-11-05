@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { deletePayout, getPayoutById, getMonthStatus } from '@/lib/db';
-import { getUserFromRequest } from '@/lib/auth-server';
+import { getUserFromRequest, requireMasterForMutation } from '@/lib/auth-server';
 
 // DELETE /api/payouts/[id] - удалить выплату
 export async function DELETE(
@@ -8,6 +8,13 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    // Разрешаем удаление только для мастера (админ/демо запрещены)
+    try {
+      await requireMasterForMutation(request);
+    } catch {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+    }
+
     const user = await getUserFromRequest(request);
     if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });

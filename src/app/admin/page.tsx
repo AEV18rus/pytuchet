@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import UserManagement from '@/components/UserManagement';
 import Link from 'next/link';
 import Image from 'next/image';
+import { getAuthHeaders } from '@/lib/auth';
 
 interface Shift {
   id?: number;
@@ -42,11 +43,36 @@ export default function AdminPage() {
   const [shifts, setShifts] = useState<Shift[]>([]);
   const [loading, setLoading] = useState(false);
   const [version, setVersion] = useState<Version | null>(null);
+  const [userRole, setUserRole] = useState<'admin' | 'master' | 'demo' | undefined>(undefined);
+
+  // Проверка авторизации: если нет cookie-сессии или Telegram заголовков — редирект на /login
+  useEffect(() => {
+    const checkAuth = async () => {
+      try {
+        const res = await fetch('/api/auth/me', { headers: getAuthHeaders() });
+        if (!res.ok) {
+          router.replace('/login');
+          return;
+        }
+        const data = await res.json().catch(() => null);
+        const role = data?.user?.role as ('admin' | 'master' | 'demo' | undefined);
+        setUserRole(role);
+        // Разрешаем доступ в админ-панель для admin и demo (демо только просмотр)
+        if (role !== 'admin' && role !== 'demo') {
+          router.replace('/');
+          return;
+        }
+      } catch {
+        router.replace('/login');
+      }
+    };
+    checkAuth();
+  }, [router]);
 
   const loadShifts = async () => {
     try {
       setLoading(true);
-      const response = await fetch('/api/admin/shifts');
+      const response = await fetch('/api/admin/shifts', { headers: getAuthHeaders() });
       if (response.ok) {
         const data = await response.json();
         setShifts(data);
@@ -60,7 +86,7 @@ export default function AdminPage() {
 
   const loadVersion = async () => {
     try {
-      const response = await fetch('/api/version');
+      const response = await fetch('/api/version', { headers: getAuthHeaders() });
       if (response.ok) {
         const data = await response.json();
         setVersion(data);
@@ -117,6 +143,11 @@ export default function AdminPage() {
       </div>
 
       <div className="content">
+        {userRole === 'demo' && (
+          <div className="readonly-banner">
+            <strong>Демо режим:</strong> панель доступна только для просмотра, правка данных отключена.
+          </div>
+        )}
         {!showReports && !showUserManagement ? (
            <div className="admin-section">
              <div className="admin-grid">
@@ -256,7 +287,7 @@ export default function AdminPage() {
                  Назад к панели
                </button>
              </div>
-             <UserManagement />
+             <UserManagement readonly={userRole === 'demo'} />
            </div>
          )}
        </div>
@@ -312,6 +343,16 @@ export default function AdminPage() {
 
         .content {
           padding: 30px;
+        }
+
+        .readonly-banner {
+          background: #fff3cd;
+          color: #856404;
+          border: 1px solid #ffeeba;
+          border-radius: 8px;
+          padding: 12px 16px;
+          margin-bottom: 16px;
+          font-size: 0.95em;
         }
 
 

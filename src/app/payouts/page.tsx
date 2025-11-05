@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import Image from 'next/image';
 import { useRouter } from 'next/navigation';
+import { useTelegramAuth } from '@/hooks/useTelegramAuth';
 
 // Типы для Telegram WebApp
 declare global {
@@ -51,6 +52,7 @@ interface User {
 
 export default function PayoutsPage() {
   const router = useRouter();
+  const { user: authUser } = useTelegramAuth();
   const [user, setUser] = useState<User | null>(null);
   const [months, setMonths] = useState<MonthData[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -479,6 +481,7 @@ export default function PayoutsPage() {
                       setShowModal(true);
                     }}
                     className="btn btn-primary"
+                    disabled={authUser?.role === 'demo'}
                   >
                     + Добавить выплату
                   </button>
@@ -509,6 +512,7 @@ export default function PayoutsPage() {
                           <button
                             onClick={() => handleDeletePayout(payout.id)}
                             className="btn btn-danger btn-small"
+                            disabled={authUser?.role === 'demo'}
                           >
                             Удалить
                           </button>
@@ -571,7 +575,7 @@ export default function PayoutsPage() {
                   />
                 </div>
                 <div className="modal-actions">
-                  <button type="submit" className="btn btn-primary">
+                  <button type="submit" className="btn btn-primary" disabled={authUser?.role === 'demo'}>
                     Добавить
                   </button>
                   <button

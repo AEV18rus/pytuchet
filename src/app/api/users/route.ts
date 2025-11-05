@@ -1,8 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getAllUsers } from '@/lib/db';
+import { requireAdmin } from '@/lib/auth-server';
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
+    // Список пользователей доступен только администратору
+    await requireAdmin(request);
     const users = await getAllUsers();
     return NextResponse.json({
       success: true,

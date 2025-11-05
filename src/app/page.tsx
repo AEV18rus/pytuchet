@@ -36,6 +36,8 @@ interface Price {
 export default function HomePage() {
   const router = useRouter();
   const { isAuthenticated, user, loading: authLoading } = useTelegramAuth();
+  // Режим демо: ограничения на добавление и удаление
+  const isDemo = user?.role === 'demo';
   const [shifts, setShifts] = useState<Shift[]>([]);
   const [prices, setPrices] = useState<Price[]>([]);
   const [loading, setLoading] = useState(true);
@@ -570,6 +572,8 @@ export default function HomePage() {
           text-transform: uppercase;
           letter-spacing: 0.5px;
           box-shadow: 0 4px 15px var(--shadow-medium);
+          text-decoration: none;
+          display: inline-block;
         }
 
         .btn:hover {
@@ -922,6 +926,9 @@ export default function HomePage() {
         </div>
 
         <div className="content">
+          <div style={{ display: 'flex', justifyContent: 'flex-start', marginBottom: 20 }}>
+            <Link href="/account" className="btn">Личный кабинет</Link>
+          </div>
           <UserGreeting />
           {/* Форма добавления новой смены */}
           <div className="form-section">
@@ -1036,7 +1043,7 @@ export default function HomePage() {
                 <button 
                   className="btn" 
                   onClick={handleAddShift} 
-                  disabled={!newShift.date || newShift.hours <= 0}
+                  disabled={isDemo || !newShift.date || newShift.hours <= 0}
                 >
                   Добавить смену
                 </button>
@@ -1094,6 +1101,7 @@ export default function HomePage() {
                                 className="delete-btn"
                                 onClick={() => shift.id && handleDeleteShift(shift.id)}
                                 title="Удалить смену"
+                                disabled={isDemo}
                               >
                                 <img src="/trash.svg" alt="Удалить" width="28" height="28" />
                               </button>

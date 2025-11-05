@@ -27,7 +27,7 @@ async function checkAndCreateTables() {
           id SERIAL PRIMARY KEY,
           name TEXT NOT NULL,
           telegram_id TEXT UNIQUE,
-          is_admin BOOLEAN DEFAULT false,
+          role TEXT DEFAULT 'master',
           created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
       `;

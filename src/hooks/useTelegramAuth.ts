@@ -38,6 +38,23 @@ export function useTelegramAuth() {
         console.log('=== CLIENT AUTH DEBUG ===');
         console.log('Starting authentication process...');
         
+        // 0) Сначала проверяем cookie-сессию (браузерный вход)
+        try {
+          const meRes = await fetch('/api/auth/me', { method: 'GET' });
+          if (meRes.ok) {
+            const meData = await meRes.json();
+            if (meData && meData.authenticated && meData.user) {
+              console.log('Authenticated via cookie session:', meData.user);
+              setUser(meData.user);
+              saveUserToStorage(meData.user);
+              setLoading(false);
+              return;
+            }
+          }
+        } catch (cookieErr) {
+          console.log('Cookie session not available:', cookieErr);
+        }
+
         // Сначала проверяем localStorage
         const storedUser = getUserFromStorage();
         if (storedUser) {
@@ -170,6 +187,8 @@ export function useTelegramAuth() {
   };
 
   const logout = () => {
+    // Выходим из cookie-сессии, если она есть
+    fetch('/api/auth/logout', { method: 'POST' }).catch(() => {});
     setUser(null);
     removeUserFromStorage();
   };

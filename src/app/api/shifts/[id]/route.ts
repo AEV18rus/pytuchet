@@ -1,10 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { deleteShift, getShiftById, getMonthStatus } from '@/lib/db';
-import { requireAuth } from '@/lib/auth-server';
+import { requireMasterForMutation } from '@/lib/auth-server';
 
 export async function DELETE(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
-    const user = await requireAuth(request);
+    // Удаление смены разрешено только мастеру
+    const user = await requireMasterForMutation(request);
     const { id: idParam } = await params;
     const id = parseInt(idParam);
     if (isNaN(id)) {
@@ -29,8 +30,13 @@ export async function DELETE(request: NextRequest, { params }: { params: Promise
     
     return NextResponse.json({ message: 'Смена удалена успешно' });
   } catch (error) {
-    if (error instanceof Error && error.message === 'Unauthorized') {
-      return NextResponse.json({ error: 'Требуется авторизация' }, { status: 401 });
+    if (error instanceof Error) {
+      if (error.message === 'Unauthorized') {
+        return NextResponse.json({ error: 'Требуется авторизация' }, { status: 401 });
+      }
+      if (error.message === 'Forbidden') {
+        return NextResponse.json({ error: 'Доступ запрещен' }, { status: 403 });
+      }
     }
     console.error('Ошибка при удалении смены:', error);
     return NextResponse.json({ error: 'Ошибка сервера' }, { status: 500 });

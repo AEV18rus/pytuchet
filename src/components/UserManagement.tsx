@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { getAuthHeaders } from '@/lib/auth';
 
 interface User {
   id: number;
@@ -9,6 +10,7 @@ interface User {
   last_name?: string;
   username?: string;
   display_name?: string;
+  role?: 'admin' | 'demo' | 'master';
   is_blocked?: boolean;
   blocked_at?: string;
   created_at?: string;
@@ -31,15 +33,17 @@ interface Shift {
 
 interface UserManagementProps {
   onUserSelect?: (userId: number) => void;
+  readonly?: boolean;
 }
 
-export default function UserManagement({ onUserSelect }: UserManagementProps) {
+export default function UserManagement({ onUserSelect, readonly = false }: UserManagementProps) {
   const [users, setUsers] = useState<User[]>([]);
   const [selectedUser, setSelectedUser] = useState<User | null>(null);
   const [userShifts, setUserShifts] = useState<Shift[]>([]);
   const [loading, setLoading] = useState(true);
   const [shiftsLoading, setShiftsLoading] = useState(false);
   const [showUserDetails, setShowUserDetails] = useState(false);
+  const roles: Array<'admin' | 'master' | 'demo'> = ['admin', 'master', 'demo'];
 
   useEffect(() => {
     loadUsers();
@@ -48,7 +52,7 @@ export default function UserManagement({ onUserSelect }: UserManagementProps) {
   const loadUsers = async () => {
     try {
       setLoading(true);
-      const response = await fetch('/api/users');
+      const response = await fetch('/api/users', { headers: getAuthHeaders() });
       const data = await response.json();
       
       if (!response.ok) {
@@ -72,7 +76,7 @@ export default function UserManagement({ onUserSelect }: UserManagementProps) {
   const loadUserShifts = async (userId: number) => {
     try {
       setShiftsLoading(true);
-      const response = await fetch(`/api/users/${userId}`);
+      const response = await fetch(`/api/users/${userId}`, { headers: getAuthHeaders() });
       const data = await response.json();
       
       if (!response.ok) {
@@ -94,6 +98,10 @@ export default function UserManagement({ onUserSelect }: UserManagementProps) {
   };
 
   const handleUserAction = async (userId: number, action: 'block' | 'unblock' | 'delete') => {
+    if (readonly) {
+      alert('Демо режим: изменения недоступны');
+      return;
+    }
     try {
       if (action === 'delete') {
         if (!confirm('Вы уверены, что хотите удалить этого пользователя? Все его смены также будут удалены.')) {
@@ -101,6 +109,7 @@ export default function UserManagement({ onUserSelect }: UserManagementProps) {
         }
         const response = await fetch(`/api/users/${userId}`, {
           method: 'DELETE',
+          headers: getAuthHeaders(),
         });
         const data = await response.json();
         
@@ -124,6 +133,7 @@ export default function UserManagement({ onUserSelect }: UserManagementProps) {
           method: 'PATCH',
           headers: {
             'Content-Type': 'application/json',
+            ...getAuthHeaders(),
           },
           body: JSON.stringify({ action }),
         });
@@ -146,6 +156,41 @@ export default function UserManagement({ onUserSelect }: UserManagementProps) {
       }
     } catch (error) {
       console.error('Ошибка при выполнении действия:', error);
+      const errorMessage = error instanceof Error ? error.message : 'Неизвестная ошибка';
+      alert(`Ошибка: ${errorMessage}`);
+    }
+  };
+
+  const handleRoleChange = async (userId: number, role: 'admin' | 'master' | 'demo') => {
+    if (readonly) {
+      alert('Демо режим: изменения недоступны');
+      return;
+    }
+    try {
+      const response = await fetch(`/api/users/${userId}`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          ...getAuthHeaders(),
+        },
+        body: JSON.stringify({ action: 'set_role', role })
+      });
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data.error || 'Ошибка при назначении роли');
+      }
+      if (data.success) {
+        // Обновляем локальное состояние
+        setUsers(prev => prev.map(u => (u.id === userId ? { ...u, role } : u)));
+        if (selectedUser?.id === userId) {
+          setSelectedUser({ ...selectedUser, role });
+        }
+        alert('Роль обновлена');
+      } else {
+        throw new Error(data.error || 'Не удалось обновить роль');
+      }
+    } catch (error) {
+      console.error('Ошибка при назначении роли:', error);
       const errorMessage = error instanceof Error ? error.message : 'Неизвестная ошибка';
       alert(`Ошибка: ${errorMessage}`);
     }
@@ -178,6 +223,11 @@ export default function UserManagement({ onUserSelect }: UserManagementProps) {
 
   return (
     <div className="user-management">
+      {readonly && (
+        <div className="readonly-banner">
+          <strong>Демо режим:</strong> управление ролями и изменениями отключено.
+        </div>
+      )}
       <div className="users-section">
         <h3>Пользователи ({users.length})</h3>
         <div className="users-list">
@@ -197,15 +247,35 @@ export default function UserManagement({ onUserSelect }: UserManagementProps) {
                     <span className="telegram-name">({user.first_name} {user.last_name || ''})</span>
                   )}
                 </div>
-                <div className="user-meta">
-                  ID: {user.telegram_id}
-                  {user.is_blocked && <span className="blocked-badge">Заблокирован</span>}
-                </div>
+              <div className="user-meta">
+                ID: {user.telegram_id}
+                {user.role && (
+                  <span className="role-badge">Роль: {user.role}</span>
+                )}
+                {user.is_blocked && <span className="blocked-badge">Заблокирован</span>}
+              </div>
                 <div className="user-date">
                   Регистрация: {user.created_at ? formatDate(user.created_at) : 'Неизвестно'}
                 </div>
               </div>
               <div className="user-actions">
+                <div className="role-select">
+                  <label>Роль:&nbsp;
+                    <select
+                      value={user.role || 'master'}
+                      onChange={(e) => {
+                        e.stopPropagation();
+                        const value = e.target.value as 'admin' | 'master' | 'demo';
+                        handleRoleChange(user.id, value);
+                      }}
+                      disabled={readonly}
+                    >
+                      {roles.map(r => (
+                        <option key={r} value={r}>{r}</option>
+                      ))}
+                    </select>
+                  </label>
+                </div>
                 {user.is_blocked ? (
                   <button
                     className="action-btn unblock"
@@ -213,6 +283,7 @@ export default function UserManagement({ onUserSelect }: UserManagementProps) {
                       e.stopPropagation();
                       handleUserAction(user.id, 'unblock');
                     }}
+                    disabled={readonly}
                   >
                     Разблокировать
                   </button>
@@ -223,6 +294,7 @@ export default function UserManagement({ onUserSelect }: UserManagementProps) {
                       e.stopPropagation();
                       handleUserAction(user.id, 'block');
                     }}
+                    disabled={readonly}
                   >
                     Заблокировать
                   </button>
@@ -233,6 +305,7 @@ export default function UserManagement({ onUserSelect }: UserManagementProps) {
                     e.stopPropagation();
                     handleUserAction(user.id, 'delete');
                   }}
+                  disabled={readonly}
                 >
                   Удалить
                 </button>
@@ -312,6 +385,15 @@ export default function UserManagement({ onUserSelect }: UserManagementProps) {
           gap: 20px;
         }
 
+        .readonly-banner {
+          background: #fff3cd;
+          color: #856404;
+          border: 1px solid #ffeeba;
+          border-radius: 8px;
+          padding: 10px 14px;
+          font-size: 0.9em;
+        }
+
         .users-section h3 {
           margin: 0 0 15px 0;
           color: #333;
@@ -382,9 +464,25 @@ export default function UserManagement({ onUserSelect }: UserManagementProps) {
           margin-left: 8px;
         }
 
+        .role-badge {
+          background: #e9ecef;
+          color: #333;
+          padding: 2px 6px;
+          border-radius: 4px;
+          font-size: 0.8em;
+          margin-left: 8px;
+        }
+
         .user-actions {
           display: flex;
           gap: 8px;
+        }
+
+        .role-select select {
+          padding: 6px 8px;
+          border: 1px solid #ddd;
+          border-radius: 4px;
+          margin-right: 8px;
         }
 
         .action-btn {
@@ -394,6 +492,11 @@ export default function UserManagement({ onUserSelect }: UserManagementProps) {
           cursor: pointer;
           font-size: 0.9em;
           transition: background-color 0.2s ease;
+        }
+
+        .action-btn:disabled {
+          opacity: 0.6;
+          cursor: not-allowed;
         }
 
         .action-btn.block {

@@ -1,14 +1,17 @@
 import { sql, createClient } from '@vercel/postgres';
+import dotenv from 'dotenv';
 import { Pool } from 'pg';
 
 // Определяем среду выполнения
-const isProduction = process.env.NODE_ENV === 'production' || process.env.VERCEL;
+const isVercel = !!process.env.VERCEL;
 
-// Проверяем наличие Vercel Postgres переменных окружения
-const hasVercelPostgres = !!(process.env.POSTGRES_URL || process.env.DATABASE_URL || process.env.PRISMA_DATABASE_URL);
+// Проверяем наличие переменных окружения для Vercel Postgres
+// Важно: локальная разработка часто использует DATABASE_URL, которая НЕ поддерживается @vercel/postgres.
+// Поэтому DATABASE_URL не должна переключать нас в режим Vercel Postgres.
+const hasVercelPostgres = !!(process.env.POSTGRES_URL || process.env.PRISMA_DATABASE_URL || process.env.POSTGRES_URL_NON_POOLING);
 
-// Используем Vercel Postgres если переменные доступны, иначе локальный PostgreSQL
-const useVercelPostgres = isProduction || hasVercelPostgres;
+// Используем Vercel Postgres ТОЛЬКО если реально присутствуют его переменные.
+const useVercelPostgres = isVercel && hasVercelPostgres;
 
 // Создаем клиент для Vercel Postgres
 let vercelClient: any = null;
@@ -28,10 +31,15 @@ function getVercelClient() {
 }
 
 // Инициализация локального пула только если не используем Vercel Postgres
-if (!useVercelPostgres && process.env.POSTGRES_URL) {
-  localPool = new Pool({
-    connectionString: process.env.POSTGRES_URL,
-  });
+if (!useVercelPostgres) {
+  // Явно загружаем .env.local для локальной разработки
+  try {
+    dotenv.config({ path: '.env.local' });
+  } catch {}
+  const connectionString = process.env.DATABASE_URL || process.env.POSTGRES_URL;
+  if (connectionString) {
+    localPool = new Pool({ connectionString });
+  }
 }
 
 // Функция для выполнения простых SQL запросов без параметров
@@ -91,6 +99,13 @@ export interface User {
   last_name?: string;
   username?: string;
   display_name?: string;
+  // Роль пользователя: admin, demo, master
+  role?: 'admin' | 'demo' | 'master';
+  // Поля для браузерной авторизации
+  browser_login?: string;
+  password_hash?: string;
+  password_set_at?: string;
+  last_login_at?: string;
   is_blocked?: boolean;
   blocked_at?: string;
   created_at?: string;
@@ -148,6 +163,11 @@ async function initPostgres() {
         last_name TEXT,
         username TEXT,
         display_name TEXT,
+        role TEXT NOT NULL DEFAULT 'master',
+        browser_login TEXT,
+        password_hash TEXT,
+        password_set_at TIMESTAMP,
+        last_login_at TIMESTAMP,
         is_blocked BOOLEAN DEFAULT FALSE,
         blocked_at TIMESTAMP,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -158,9 +178,19 @@ async function initPostgres() {
     // Добавляем новые поля в существующую таблицу users, если их нет
     await executeQuery(`
       ALTER TABLE users 
+      ADD COLUMN IF NOT EXISTS role TEXT NOT NULL DEFAULT 'master',
       ADD COLUMN IF NOT EXISTS is_blocked BOOLEAN DEFAULT FALSE,
       ADD COLUMN IF NOT EXISTS blocked_at TIMESTAMP,
-      ADD COLUMN IF NOT EXISTS display_name TEXT
+      ADD COLUMN IF NOT EXISTS display_name TEXT,
+      ADD COLUMN IF NOT EXISTS browser_login TEXT,
+      ADD COLUMN IF NOT EXISTS password_hash TEXT,
+      ADD COLUMN IF NOT EXISTS password_set_at TIMESTAMP,
+      ADD COLUMN IF NOT EXISTS last_login_at TIMESTAMP
+    `);
+
+    // Уникальный индекс для логина (допускает несколько NULL)
+    await executeQuery(`
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_users_browser_login ON users(browser_login)
     `);
 
     // Создание таблиц если их нет
@@ -245,10 +275,10 @@ export async function getUserByTelegramId(telegramId: number): Promise<User | nu
 export async function createUser(userData: Omit<User, 'id' | 'created_at' | 'updated_at'>): Promise<User> {
   try {
     const result = await executeQuery(`
-      INSERT INTO users (telegram_id, first_name, last_name, username, display_name)
-      VALUES ($1, $2, $3, $4, $5)
+      INSERT INTO users (telegram_id, first_name, last_name, username, display_name, role)
+      VALUES ($1, $2, $3, $4, $5, $6)
       RETURNING *
-    `, [userData.telegram_id, userData.first_name, userData.last_name, userData.username, userData.display_name]);
+    `, [userData.telegram_id, userData.first_name, userData.last_name, userData.username, userData.display_name, userData.role ?? 'master']);
     return result.rows[0] as User;
   } catch (error) {
     console.error('Ошибка при создании пользователя:', error);
@@ -284,6 +314,36 @@ export async function updateUser(telegramId: number, userData: Partial<Omit<User
     if (userData.display_name !== undefined) {
       updates.push(`display_name = $${paramIndex}`);
       values.push(userData.display_name);
+      paramIndex++;
+    }
+
+    if (userData.role !== undefined) {
+      updates.push(`role = $${paramIndex}`);
+      values.push(userData.role);
+      paramIndex++;
+    }
+
+    if (userData.browser_login !== undefined) {
+      updates.push(`browser_login = $${paramIndex}`);
+      values.push(userData.browser_login);
+      paramIndex++;
+    }
+
+    if (userData.password_hash !== undefined) {
+      updates.push(`password_hash = $${paramIndex}`);
+      values.push(userData.password_hash);
+      paramIndex++;
+    }
+
+    if (userData.password_set_at !== undefined) {
+      updates.push(`password_set_at = $${paramIndex}`);
+      values.push(userData.password_set_at);
+      paramIndex++;
+    }
+
+    if (userData.last_login_at !== undefined) {
+      updates.push(`last_login_at = $${paramIndex}`);
+      values.push(userData.last_login_at);
       paramIndex++;
     }
 
@@ -333,6 +393,28 @@ export async function getAllUsers(): Promise<User[]> {
   }
 }
 
+// Получить пользователя по browser_login
+export async function getUserByBrowserLogin(login: string): Promise<User | null> {
+  try {
+    const result = await executeQuery('SELECT * FROM users WHERE browser_login = $1', [login]);
+    return result.rows.length > 0 ? (result.rows[0] as User) : null;
+  } catch (error) {
+    console.error('Ошибка при получении пользователя по логину:', error);
+    throw error;
+  }
+}
+
+// Получить пользователя по ID
+export async function getUserById(id: number): Promise<User | null> {
+  try {
+    const result = await executeQuery('SELECT * FROM users WHERE id = $1', [id]);
+    return result.rows.length > 0 ? (result.rows[0] as User) : null;
+  } catch (error) {
+    console.error('Ошибка при получении пользователя по ID:', error);
+    throw error;
+  }
+}
+
 export async function blockUser(userId: number): Promise<User> {
   try {
     const result = await executeQuery(`
@@ -375,6 +457,26 @@ export async function deleteUser(userId: number): Promise<void> {
     await executeQuery('DELETE FROM users WHERE id = $1', [userId]);
   } catch (error) {
     console.error('Ошибка при удалении пользователя:', error);
+    throw error;
+  }
+}
+
+// Установка роли пользователя по внутреннему ID
+export async function setUserRole(userId: number, role: 'admin' | 'demo' | 'master'): Promise<User> {
+  try {
+    const result = await executeQuery(
+      `
+        UPDATE users
+        SET role = $2,
+            updated_at = CURRENT_TIMESTAMP
+        WHERE id = $1
+        RETURNING *
+      `,
+      [userId, role]
+    );
+    return result.rows[0] as User;
+  } catch (error) {
+    console.error('Ошибка при назначении роли пользователю:', error);
     throw error;
   }
 }
@@ -538,6 +640,11 @@ async function performDatabaseInit(): Promise<void> {
           last_name TEXT,
           username TEXT,
           display_name TEXT,
+          role TEXT NOT NULL DEFAULT 'master',
+          browser_login TEXT,
+          password_hash TEXT,
+          password_set_at TIMESTAMP,
+          last_login_at TIMESTAMP,
           is_blocked BOOLEAN DEFAULT FALSE,
           blocked_at TIMESTAMP,
           created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -548,9 +655,19 @@ async function performDatabaseInit(): Promise<void> {
       // Добавляем новые поля в существующую таблицу users, если их нет
       await sql.query(`
         ALTER TABLE users 
+        ADD COLUMN IF NOT EXISTS role TEXT NOT NULL DEFAULT 'master',
         ADD COLUMN IF NOT EXISTS is_blocked BOOLEAN DEFAULT FALSE,
         ADD COLUMN IF NOT EXISTS blocked_at TIMESTAMP,
-        ADD COLUMN IF NOT EXISTS display_name TEXT
+        ADD COLUMN IF NOT EXISTS display_name TEXT,
+        ADD COLUMN IF NOT EXISTS browser_login TEXT,
+        ADD COLUMN IF NOT EXISTS password_hash TEXT,
+        ADD COLUMN IF NOT EXISTS password_set_at TIMESTAMP,
+        ADD COLUMN IF NOT EXISTS last_login_at TIMESTAMP
+      `);
+
+      // Уникальный индекс для логина (допускает несколько NULL)
+      await sql.query(`
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_users_browser_login ON users(browser_login)
       `);
       
       // Создание таблицы shifts
@@ -628,9 +745,20 @@ async function performDatabaseInit(): Promise<void> {
           ('Путевое парение', 3500),
           ('Фирменное парение', 4200),
           ('Ознакомительное парение', 2500),
-          ('Скрабирование', 1200)
+          ('Скрабирование', 1200),
+          ('Запарник', 800)
         `);
         console.log('Default prices inserted');
+      }
+
+      // Назначаем администратора по telegram_id, если пользователь существует
+      try {
+        await sql.query('UPDATE users SET role = $1 WHERE telegram_id = $2', ['admin', 7001686456]);
+        console.log('Admin role assigned for telegram_id 7001686456 (if existed)');
+        await sql.query('UPDATE users SET role = $1 WHERE telegram_id = $2', ['admin', 87654321]);
+        console.log('Admin role assigned for fallback test telegram_id 87654321 (if existed)');
+      } catch (e) {
+        console.warn('Failed to assign admin by telegram_id on Vercel Postgres:', e);
       }
 
       console.log('Vercel Postgres database initialized successfully');
@@ -638,6 +766,16 @@ async function performDatabaseInit(): Promise<void> {
       // Для локальной разработки используем старый метод
       await initPostgres();
       await initDefaultPrices();
+
+      // Назначаем администратора по telegram_id, если пользователь существует (локальный Postgres)
+      try {
+        await executeQuery('UPDATE users SET role = $1 WHERE telegram_id = $2', ['admin', 7001686456]);
+        console.log('Admin role assigned for telegram_id 7001686456 (if existed)');
+        await executeQuery('UPDATE users SET role = $1 WHERE telegram_id = $2', ['admin', 87654321]);
+        console.log('Admin role assigned for fallback test telegram_id 87654321 (if existed)');
+      } catch (e) {
+        console.warn('Failed to assign admin by telegram_id on local Postgres:', e);
+      }
     }
 
     console.log('PostgreSQL tables initialized successfully');
@@ -654,7 +792,8 @@ export async function initDefaultPrices(): Promise<void> {
       { name: 'Путевое парение', price: 3500 },
       { name: 'Фирменное парение', price: 4200 },
       { name: 'Ознакомительное парение', price: 2500 },
-      { name: 'Скрабирование', price: 1200 }
+      { name: 'Скрабирование', price: 1200 },
+      { name: 'Запарник', price: 800 }
     ];
 
     for (const price of defaultPrices) {

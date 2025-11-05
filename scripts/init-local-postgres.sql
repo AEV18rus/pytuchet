@@ -7,9 +7,20 @@ CREATE TABLE IF NOT EXISTS users (
   first_name TEXT NOT NULL,
   last_name TEXT,
   username TEXT,
+  display_name TEXT,
+  role TEXT NOT NULL DEFAULT 'master',
+  browser_login TEXT,
+  password_hash TEXT,
+  password_set_at TIMESTAMP,
+  last_login_at TIMESTAMP,
+  is_blocked BOOLEAN DEFAULT FALSE,
+  blocked_at TIMESTAMP,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
+
+-- Уникальный индекс для логина (позволяет несколько NULL)
+CREATE UNIQUE INDEX IF NOT EXISTS idx_users_browser_login ON users(browser_login);
 
 -- Создание таблицы shifts
 CREATE TABLE IF NOT EXISTS shifts (

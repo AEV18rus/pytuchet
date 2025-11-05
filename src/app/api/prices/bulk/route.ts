@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { addPrice, updatePrice, getPrices } from '@/lib/db';
+import { ensureDatabaseInitialized } from '@/lib/global-init';
+import { requireAdmin } from '@/lib/auth-server';
 
 interface Prices {
   hourly_rate: number;
@@ -21,6 +23,8 @@ const priceMapping: Record<keyof Prices, string> = {
 
 export async function POST(request: NextRequest) {
   try {
+    await requireAdmin(request);
+    await ensureDatabaseInitialized();
     const prices: Prices = await request.json();
     
     // Валидация данных
@@ -53,6 +57,14 @@ export async function POST(request: NextRequest) {
       prices
     });
   } catch (error) {
+    if (error instanceof Error) {
+      if (error.message === 'Unauthorized') {
+        return NextResponse.json({ error: 'Требуется авторизация' }, { status: 401 });
+      }
+      if (error.message === 'Forbidden') {
+        return NextResponse.json({ error: 'Доступ запрещен' }, { status: 403 });
+      }
+    }
     console.error('Ошибка при сохранении цен:', error);
     return NextResponse.json({ error: 'Ошибка сервера' }, { status: 500 });
   }
@@ -60,6 +72,8 @@ export async function POST(request: NextRequest) {
 
 export async function PUT(request: NextRequest) {
   try {
+    await requireAdmin(request);
+    await ensureDatabaseInitialized();
     const prices: Prices = await request.json();
     
     // Валидация данных
@@ -92,6 +106,14 @@ export async function PUT(request: NextRequest) {
       prices
     });
   } catch (error) {
+    if (error instanceof Error) {
+      if (error.message === 'Unauthorized') {
+        return NextResponse.json({ error: 'Требуется авторизация' }, { status: 401 });
+      }
+      if (error.message === 'Forbidden') {
+        return NextResponse.json({ error: 'Доступ запрещен' }, { status: 403 });
+      }
+    }
     console.error('Ошибка при обновлении цен:', error);
     return NextResponse.json({ error: 'Ошибка сервера' }, { status: 500 });
   }
@@ -99,6 +121,7 @@ export async function PUT(request: NextRequest) {
 
 export async function GET() {
   try {
+    await ensureDatabaseInitialized();
     const prices = await getPrices();
     
     // Преобразуем в формат, ожидаемый фронтендом

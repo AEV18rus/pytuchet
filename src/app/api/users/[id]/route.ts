@@ -1,11 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { blockUser, unblockUser, deleteUser, getShifts } from '@/lib/db';
+import { blockUser, unblockUser, deleteUser, getShifts, setUserRole } from '@/lib/db';
+import { requireAdmin } from '@/lib/auth-server';
 
 export async function PATCH(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    // Только админы могут выполнять административные действия
+    await requireAdmin(request);
     const { id: idParam } = await params;
     const userId = parseInt(idParam);
     if (isNaN(userId)) {
@@ -23,6 +26,14 @@ export async function PATCH(
       case 'unblock':
         result = await unblockUser(userId);
         break;
+      case 'set_role': {
+        const role = body.role as 'admin' | 'demo' | 'master';
+        if (!role || !['admin', 'demo', 'master'].includes(role)) {
+          return NextResponse.json({ error: 'Некорректная роль' }, { status: 400 });
+        }
+        result = await setUserRole(userId, role);
+        break;
+      }
       default:
         return NextResponse.json({ error: 'Неверное действие' }, { status: 400 });
     }
@@ -42,6 +53,7 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    await requireAdmin(request);
     const { id: idParam } = await params;
     const userId = parseInt(idParam);
     if (isNaN(userId)) {
@@ -65,6 +77,7 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    await requireAdmin(request);
     const { id: idParam } = await params;
     const userId = parseInt(idParam);
     if (isNaN(userId)) {

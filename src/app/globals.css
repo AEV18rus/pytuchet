@@ -3,7 +3,6 @@
     padding: 0;
     box-sizing: border-box;
 }
-
 :root {
     /* Цветовая палитра в стиле русской бани */
     --primary-color: #4A2B1B;        /* Глубокий банный коричневый */
@@ -38,14 +37,6 @@ body {
     color: var(--font-color);
 }
 
-.container {
-    max-width: 800px;
-    margin: 0 auto;
-    background: var(--background-card);
-    border-radius: 15px;
-    box-shadow: 0 20px 40px var(--shadow-light);
-    overflow: hidden;
-}
 
 .header {
     background: linear-gradient(135deg, var(--primary-color) 0%, var(--secondary-color) 100%);
@@ -313,4 +304,21 @@ body {
     .shifts-table td:last-child {
         padding-right: 8px;
     }
+}
+
+:root {
+    --bp-sm: 480px;
+    --bp-md: 768px;
+    --bp-lg: 1024px;
+    --bp-xl: 1280px;
+}
+
+.container {
+    max-width: 1200px;
+    padding: 0 16px;
+    margin: 0 auto;
+    background: var(--background-card);
+    border-radius: 15px;
+    box-shadow: 0 20px 40px var(--shadow-light);
+    overflow: hidden;
 }

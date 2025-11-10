@@ -25,7 +25,9 @@ export default function RootLayout({
         <TelegramWebApp />
         <ServicesProvider>
           <main>
-            {children}
+            <div className="container">
+              {children}
+            </div>
           </main>
         </ServicesProvider>
       </body>

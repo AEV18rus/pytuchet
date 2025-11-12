@@ -115,6 +115,88 @@ body {
     text-shadow: 0 1px 2px var(--shadow-light);
 }
 
+.month-card__header {
+    background: #fff5ed;
+    border-radius: 18px;
+    box-shadow: 0 8px 22px rgba(74, 43, 27, 0.12);
+    padding: 22px;
+    margin-bottom: 24px;
+    border: 1px solid #f2ceb2;
+}
+
+.month-card__status {
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    font-weight: 600;
+    color: var(--secondary-color);
+    margin-bottom: 16px;
+}
+
+.month-card__status span {
+    font-size: 0.95rem;
+}
+
+.month-card__totals {
+    background: #fff1e3;
+    border-radius: 16px;
+    border: 1px solid #f2ceb2;
+    padding: 18px 22px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.month-card__totals-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-end;
+}
+
+.month-card__totals-label {
+    font-size: 0.85rem;
+    color: rgba(44, 26, 15, 0.7);
+}
+
+.month-card__totals-value {
+    font-size: 1.3rem;
+    font-weight: 700;
+    color: var(--font-color);
+}
+
+.month-card__totals-row--accent .month-card__totals-value {
+    font-size: 1.45rem;
+}
+
+.month-card__totals-value--danger {
+    color: #c2410c;
+}
+
+.month-card__totals-value--success {
+    color: #15803d;
+}
+
+.status-circle {
+    width: 16px;
+    height: 16px;
+    border-radius: 999px;
+    display: inline-block;
+    background: #6b7280;
+    flex-shrink: 0;
+}
+
+.status-circle--open {
+    background: #ef4444;
+}
+
+.status-circle--partial {
+    background: #eab308;
+}
+
+.status-circle--closed {
+    background: #22c55e;
+}
+
 .form-group {
     margin-bottom: 20px;
 }
@@ -250,6 +332,207 @@ body {
     background-color: rgba(139, 69, 19, 0.05);
 }
 
+.shifts-table--employees .employee-row {
+    cursor: pointer;
+}
+
+.shifts-table--employees {
+    border-collapse: separate;
+    border-spacing: 0 18px;
+}
+
+.shifts-table--employees td {
+    border-bottom: none;
+    padding: 0;
+}
+
+.employee-card-wrapper {
+    padding: 0;
+}
+
+.employee-card {
+    background: #fff6ed;
+    border: 1px solid #f2d6bf;
+    border-radius: 20px;
+    box-shadow: 0 8px 18px rgba(74, 43, 27, 0.12);
+    padding: 18px 20px 20px;
+}
+
+.employee-card__header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 12px;
+}
+
+.employee-card__name {
+    font-size: 1.2rem;
+    font-weight: 600;
+    color: var(--primary-color);
+    margin: 0;
+}
+
+.employee-status-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 10px;
+    border-radius: 999px;
+    font-size: 0.85rem;
+    font-weight: 600;
+    text-transform: lowercase;
+    background: rgba(22, 163, 74, 0.12);
+    color: #15803d;
+    white-space: nowrap;
+}
+
+.employee-status-badge--debt {
+    background: rgba(220, 38, 38, 0.12);
+    color: #b91c1c;
+}
+
+.employee-status-badge__dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 999px;
+    background: currentColor;
+    display: inline-flex;
+}
+
+.employee-card__total {
+    margin-top: 6px;
+    font-weight: 600;
+    color: var(--primary-color);
+    font-size: 0.95rem;
+}
+
+.employee-card__total span {
+    font-size: 1.05rem;
+}
+
+.employee-card__amount {
+    font-weight: 600;
+    color: var(--font-color);
+}
+
+.employee-card__amount--danger {
+    color: #c2410c;
+}
+
+.employee-card__amount--safe {
+    color: #15803d;
+}
+
+.employee-card__balance {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    margin-top: 16px;
+}
+
+.employee-card__summary-row {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    gap: 8px;
+    font-size: 0.95rem;
+    color: rgba(44, 26, 15, 0.7);
+}
+
+.employee-card__summary-row span:last-child {
+    justify-self: end;
+    font-weight: 600;
+    color: var(--font-color);
+}
+
+.employee-card__summary-row--accent span:last-child {
+    font-size: 1.15rem;
+}
+
+.shift-card-cell {
+    padding: 0 !important;
+    display: block !important;
+    width: 100%;
+}
+
+.shift-card-list {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    width: 100%;
+    padding: 0 15px;
+}
+
+.shift-card {
+    background: #f9f4f0;
+    border-radius: 18px;
+    padding: 16px;
+    border: 1px solid #ece0d6;
+    width: 100%;
+}
+
+.shift-card__header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 12px;
+    margin-bottom: 12px;
+}
+
+.shift-card__date {
+    font-size: 1rem;
+    font-weight: 500;
+    color: var(--primary-color);
+}
+
+.shift-card__masters {
+    font-size: 0.9rem;
+    color: rgba(44, 26, 15, 0.6);
+    margin-top: 4px;
+}
+
+.shift-card__hours-badge {
+    background: #f4e6da;
+    color: var(--primary-color);
+    font-weight: 600;
+    padding: 6px 12px;
+    border-radius: 999px;
+    font-size: 0.95rem;
+    white-space: nowrap;
+}
+
+.shift-card__services {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin-bottom: 10px;
+}
+
+.shift-card__service-row {
+    display: grid;
+    grid-template-columns: 60% 40%;
+    align-items: center;
+    gap: 8px;
+    font-size: 0.9rem;
+    color: rgba(44, 26, 15, 0.7);
+}
+
+.shift-card__service-row span:last-child {
+    text-align: right;
+    font-weight: 600;
+    color: var(--font-color);
+}
+
+.shift-card__total {
+    margin-top: 8px;
+    text-align: right;
+}
+
+.shift-card__total-value {
+    font-weight: 400;
+    font-size: 0.95rem;
+    color: var(--primary-color);
+}
+
 /* Адаптивность */
 @media (max-width: 768px) {
     body {
@@ -296,21 +579,104 @@ body {
         font-size: 14px;
     }
 
-    /* Мобильные стили для таблицы смен */
-    .shifts-table {
-        font-size: 14px;
+    .month-card__header {
+        padding: 18px;
     }
-    .shifts-table th,
-    .shifts-table td {
-        padding: 8px 4px;
-        font-size: 12px;
+
+    .month-card__totals {
+        padding: 16px;
     }
-    .shifts-table th:first-child,
-    .shifts-table td:first-child {
-        padding-left: 8px;
+
+    .shifts-table--employees thead {
+        display: none;
     }
-    .shifts-table th:last-child,
-    .shifts-table td:last-child {
-        padding-right: 8px;
+
+    .shifts-table--employees tbody tr {
+        display: block;
+        border: none;
+        border-radius: 0;
+        box-shadow: none;
+        background: transparent;
+        margin-bottom: 16px;
     }
+
+    .shifts-table--employees td {
+        display: block;
+        padding: 0;
+        border: none;
+    }
+
+    .shifts-table--employees td + td {
+        margin-top: 0;
+    }
+
+    .shifts-table--employees td::before {
+        content: none;
+    }
+
+    .employee-card {
+        padding: 16px;
+    }
+
+    .employee-card__balance {
+        flex-direction: row;
+        gap: 12px;
+    }
+
+    .shift-card {
+        padding: 16px;
+    }
+
+    .shift-card__service-row {
+        grid-template-columns: minmax(0, 1fr) auto;
+    }
+
+    .shift-card__hours-badge {
+        font-size: 0.9rem;
+    }
+
+}
+
+@media (max-width: 480px) {
+    .month-card__header {
+        padding: 16px;
+    }
+
+    .month-card__totals {
+        padding: 14px;
+    }
+
+    .shift-card {
+        padding: 14px;
+    }
+}
+
+/* balance block: 2 columns, label on top, value below */
+.balance-grid{
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+    align-items: start;
+}
+.balance-col{ min-width: 0; }
+.balance-col--right{
+    text-align: right;
+}
+.balance-label{
+    font-size: 0.875rem;
+    line-height: 1.2;
+    opacity: .75;
+    margin-bottom: 4px;
+}
+.balance-value{
+    font-weight: 700;
+    font-size: clamp(16px, 4vw, 18px);
+    line-height: 1.1;
+    white-space: nowrap;
+    color: #000;
+}
+@media (min-width: 768px){
+  /* на планшете/десктопе можно сделать чуть крупнее и выровнять по низу */
+  .balance-grid{ gap: 24px; }
+  .balance-value{ font-size: 18px; }
 }

@@ -229,12 +229,12 @@ export default function AccountPage() {
     font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
     background: linear-gradient(135deg, var(--background-main) 0%, var(--accent-light) 100%);
     min-height: 100vh;
-    padding: 32px;
+    padding: clamp(16px, 5vw, 36px);
     color: var(--font-color);
   }
   
   .container {
-    max-width: 760px;
+    width: min(100%, 760px);
     margin: 0 auto;
     background: var(--background-card);
     border-radius: 18px;
@@ -245,21 +245,21 @@ export default function AccountPage() {
     .header {
       background: linear-gradient(135deg, var(--primary-color) 0%, var(--secondary-color) 100%);
       color: var(--accent-color);
-      padding: 40px;
+      padding: clamp(20px, 6vw, 40px);
     }
 
     .header-content {
       display: flex;
       align-items: center;
-      justify-content: center;
-      gap: 30px;
-      flex-wrap: nowrap;
+      justify-content: space-between;
+      gap: clamp(16px, 5vw, 32px);
+      flex-wrap: wrap;
       text-align: left;
     }
 
     .logo {
-      width: 120px;
-      height: 120px;
+      width: clamp(72px, 18vw, 120px);
+      height: clamp(72px, 18vw, 120px);
       flex-shrink: 0;
       display: flex;
       align-items: center;
@@ -278,12 +278,12 @@ export default function AccountPage() {
     }
   
   .content {
-    padding: 48px;
+    padding: clamp(20px, 6vw, 48px);
   }
 
-  .back-btn { background: #fff; color: var(--font-color); border: 1px solid var(--border-light); padding: 8px 14px; border-radius: 10px; box-shadow: 0 2px 8px var(--shadow-light); cursor: pointer; transition: box-shadow .2s ease, transform .2s ease; display: inline-flex; align-items: center; gap: 6px; text-decoration: none; }
-  .back-btn:hover { transform: translateY(-1px); box-shadow: 0 4px 12px rgba(74,43,27,.25); }
-  
+  .back-section { margin-bottom: 24px; display: flex; justify-content: flex-start; padding-left: 20px; }
+  .back-button { width: auto; }
+
   .section {
     background: linear-gradient(135deg, var(--background-section) 0%, rgba(122, 62, 45, 0.06) 100%);
     border-radius: 12px;
@@ -293,6 +293,59 @@ export default function AccountPage() {
     box-shadow: 0 6px 18px var(--shadow-light);
     position: relative;
     overflow: hidden;
+  }
+
+  @media (max-width: 768px) {
+    .container {
+      border-radius: 14px;
+    }
+
+    .content {
+      padding: 20px;
+    }
+
+    .form-grid {
+      grid-template-columns: 1fr;
+      gap: 18px;
+    }
+
+    .section {
+      padding: 22px;
+      margin-bottom: 28px;
+    }
+
+    .back-section {
+      justify-content: flex-start;
+      padding-left: 0;
+    }
+
+    .buttons-row {
+      flex-direction: column;
+    }
+
+    .buttons-row .btn {
+      width: 100%;
+      min-width: 0;
+    }
+  }
+
+  @media (max-width: 480px) {
+    body {
+      padding: 12px;
+    }
+
+    .logo {
+      width: 60px;
+      height: 60px;
+    }
+
+    .content {
+      padding: 16px;
+    }
+
+    .section {
+      padding: 18px;
+    }
   }
   
   .section::before {
@@ -315,7 +368,7 @@ export default function AccountPage() {
   
   .form-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+    grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
     gap: 24px;
     margin-bottom: 24px;
   }
@@ -323,6 +376,7 @@ export default function AccountPage() {
     .input-group {
       display: flex;
       flex-direction: column;
+      gap: 6px;
     }
   
     .input-label {
@@ -336,14 +390,14 @@ export default function AccountPage() {
   
   .input-field {
     width: 100%;
-    padding: 16px 18px;
-    border: 1px solid var(--border-light);
-    border-radius: 10px;
+    padding: 14px 16px;
+    border: 1px solid rgba(74, 43, 27, 0.25);
+    border-radius: 12px;
     font-size: 16px;
-    background: var(--background-card);
+    background: rgba(255, 255, 255, 0.9);
     color: var(--font-color);
-    transition: box-shadow 0.2s ease, border-color 0.2s ease;
-    box-shadow: 0 1px 3px var(--shadow-light);
+    transition: box-shadow 0.2s ease, border-color 0.2s ease, background 0.2s ease;
+    box-shadow: 0 1px 2px rgba(74, 43, 27, 0.08);
   }
   
   .input-field:focus {
@@ -352,13 +406,19 @@ export default function AccountPage() {
     box-shadow: 0 0 0 3px rgba(74, 43, 27, 0.12);
   }
 
+  .readonly-field {
+    background: rgba(255, 255, 255, 0.7);
+    box-shadow: none;
+    border: 1px solid rgba(42, 26, 15, 0.12);
+  }
+
   .btn {
     background: linear-gradient(135deg, var(--primary-color) 0%, var(--secondary-color) 100%);
     color: var(--accent-color);
     border: none;
-    padding: 12px 24px;
-    border-radius: 10px;
-    font-size: 13px;
+    padding: 12px 22px;
+    border-radius: 12px;
+    font-size: 14px;
     font-weight: 700;
     cursor: pointer;
     transition: all 0.25s ease;
@@ -378,11 +438,22 @@ export default function AccountPage() {
     .btn-danger {
       background: linear-gradient(135deg, #dc2626, #b91c1c);
     }
-  
+
     .btn-danger:hover {
       background: linear-gradient(135deg, #ef4444, #dc2626);
     }
-  .buttons-row { display: flex; gap: 12px; margin-top: 6px; flex-wrap: wrap; }
+
+  .btn-secondary {
+    background: linear-gradient(135deg, var(--accent-color) 0%, var(--accent-light) 100%);
+    color: var(--primary-color);
+    border: 2px solid var(--primary-color);
+  }
+
+  .btn-secondary:hover {
+    background: linear-gradient(135deg, var(--accent-dark) 0%, var(--accent-color) 100%);
+  }
+  .buttons-row { display: flex; gap: 12px; margin-top: 12px; flex-wrap: wrap; align-items: stretch; }
+  .buttons-row .btn { flex: 1 1 auto; min-width: 200px; }
   .status-line { margin-bottom: 16px; font-size: 14px; color: var(--font-color); }
 
   .status-message {
@@ -423,13 +494,15 @@ export default function AccountPage() {
           </div>
         </header>
         <main className="content">
-          <button className="back-btn" onClick={() => router.back()}>← Назад</button>
+          <div className="back-section">
+            <button className="btn btn-secondary back-button" onClick={() => router.back()}>Назад</button>
+          </div>
           <section className="section">
             <h2>Данные профиля</h2>
             <div className="form-grid">
               <div className="input-group">
                 <label className="input-label">Telegram ID</label>
-                <p className="input-field">{user.telegram_id || 'N/A'}</p>
+                <div className="input-field readonly-field">{user.telegram_id || 'N/A'}</div>
               </div>
               <div className="input-group">
                 <label className="input-label">Имя</label>
@@ -448,7 +521,7 @@ export default function AccountPage() {
                   </div>
                 ) : (
                   <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                    <p className="input-field" style={{ flex: '1' }}>{displayName}</p>
+                    <div className="input-field readonly-field" style={{ flex: '1' }}>{displayName}</div>
                     <button type="button" className="btn" onClick={() => setIsEditingName(true)}>ИЗМЕНИТЬ</button>
                   </div>
                 )}
@@ -457,7 +530,7 @@ export default function AccountPage() {
               </div>
               <div className="input-group">
                 <label className="input-label">Логин (Telegram username)</label>
-                <p className="input-field">@{user.username || 'N/A'}</p>
+                <div className="input-field readonly-field">@{user.username || 'N/A'}</div>
               </div>
             </div>
           </section>

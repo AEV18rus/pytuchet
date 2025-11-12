@@ -229,7 +229,7 @@ export default function AccountPage() {
     font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
     background: linear-gradient(135deg, var(--background-main) 0%, var(--accent-light) 100%);
     min-height: 100vh;
-    padding: clamp(16px, 5vw, 36px);
+    padding: clamp(6px, 4vw, 36px);
     color: var(--font-color);
   }
   
@@ -331,7 +331,7 @@ export default function AccountPage() {
 
   @media (max-width: 480px) {
     body {
-      padding: 12px;
+      padding: 8px;
     }
 
     .logo {
@@ -345,6 +345,16 @@ export default function AccountPage() {
 
     .section {
       padding: 18px;
+    }
+  }
+
+  @media (max-width: 420px) {
+    body {
+      padding: 4px;
+    }
+
+    .container {
+      border-radius: 10px;
     }
   }
   

@@ -191,6 +191,10 @@ function EmployeeRow({
   const [expanded, setExpanded] = useState(false);
   const hasDebt = employee.outstanding > 0;
   const statusBadgeLabel = hasDebt ? 'долг' : 'выплачено';
+  const [isPayoutModalOpen, setPayoutModalOpen] = useState(false);
+  const [payoutAmount, setPayoutAmount] = useState('');
+  const [payoutComment, setPayoutComment] = useState('');
+  const [payoutMethod, setPayoutMethod] = useState('cash');
 
   const handleToggle = () => {
     const newExpanded = !expanded;
@@ -234,9 +238,84 @@ function EmployeeRow({
                 </div>
               </div>
             </div>
+            <div className="employee-card__actions">
+              <button
+                type="button"
+                className="btn btn-secondary btn-compact"
+                onClick={(event) => { event.stopPropagation(); setPayoutModalOpen(true); }}
+              >
+                Добавить выплату
+              </button>
+            </div>
           </div>
         </td>
       </tr>
+      {isPayoutModalOpen && (
+        <tr>
+          <td colSpan={2}>
+            <div className="payout-modal__backdrop" onClick={() => setPayoutModalOpen(false)}>
+              <div className="payout-modal" onClick={(e) => e.stopPropagation()}>
+                <h3>Новая выплата</h3>
+                <p className="payout-modal__hint">
+                  Фиксируем выплату для <strong>{employee.name}</strong>. Заполните данные и сохраните.
+                </p>
+                <form
+                  className="payout-form"
+                  onSubmit={(e) => {
+                    e.preventDefault();
+                    setPayoutModalOpen(false);
+                  }}
+                >
+                  <label className="payout-form__label">
+                    Сумма
+                    <input
+                      type="number"
+                      min="0"
+                      step="100"
+                      className="payout-form__input"
+                      value={payoutAmount}
+                      onChange={(e) => setPayoutAmount(e.target.value)}
+                      placeholder="например, 3500"
+                    />
+                  </label>
+                  <label className="payout-form__label">
+                    Способ
+                    <select
+                      className="payout-form__input"
+                      value={payoutMethod}
+                      onChange={(e) => setPayoutMethod(e.target.value)}
+                    >
+                      <option value="cash">Наличные</option>
+                      <option value="transfer">Перевод</option>
+                      <option value="other">Другое</option>
+                    </select>
+                  </label>
+                  <label className="payout-form__label">
+                    Комментарий
+                    <textarea
+                      className="payout-form__input"
+                      rows={3}
+                      value={payoutComment}
+                      onChange={(e) => setPayoutComment(e.target.value)}
+                      placeholder="опционально"
+                    />
+                  </label>
+                  <div className="payout-form__actions">
+                    <button type="submit" className="btn">Зафиксировать</button>
+                    <button
+                      type="button"
+                      className="btn btn-secondary"
+                      onClick={() => setPayoutModalOpen(false)}
+                    >
+                      Отмена
+                    </button>
+                  </div>
+                </form>
+              </div>
+            </div>
+          </td>
+        </tr>
+      )}
       {expanded && (
         <tr>
           <td colSpan={2} className="shift-card-cell">
@@ -545,6 +624,94 @@ export default function ReportsPage() {
 
         .btn-secondary:hover {
           background: linear-gradient(135deg, var(--accent-dark) 0%, var(--accent-color) 100%);
+        }
+
+        :global(.employee-card__actions .btn.btn-compact) {
+          padding: 4px 10px;
+          border-radius: 8px;
+          font-size: 10px;
+          letter-spacing: 0.15px;
+        }
+
+        .employee-card__actions {
+          margin-top: 10px;
+          display: flex;
+          justify-content: flex-end;
+        }
+
+        .payout-modal__backdrop {
+          position: fixed;
+          inset: 0;
+          background: rgba(0,0,0,0.4);
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          padding: 16px;
+          z-index: 1200;
+        }
+
+        .payout-modal {
+          background: #fff;
+          border-radius: 16px;
+          width: min(420px, 100%);
+          padding: 24px;
+          box-shadow: 0 20px 60px rgba(0,0,0,0.2);
+        }
+
+        .payout-modal h3 {
+          margin-bottom: 8px;
+          font-size: 20px;
+          color: var(--primary-color);
+        }
+
+        .payout-modal__hint {
+          margin-bottom: 16px;
+          font-size: 14px;
+          color: rgba(44, 26, 15, 0.8);
+        }
+
+        .payout-form {
+          display: flex;
+          flex-direction: column;
+          gap: 12px;
+        }
+
+        .payout-form__label {
+          display: flex;
+          flex-direction: column;
+          font-size: 13px;
+          font-weight: 600;
+          color: var(--primary-color);
+          gap: 6px;
+        }
+
+        .payout-form__input {
+          border: 1px solid rgba(74, 43, 27, 0.3);
+          border-radius: 10px;
+          padding: 10px 12px;
+          font-size: 14px;
+        }
+
+        .payout-form__actions {
+          display: flex;
+          gap: 10px;
+          justify-content: flex-end;
+          margin-top: 8px;
+          flex-wrap: wrap;
+        }
+
+        @media (max-width: 640px) {
+          .payout-modal {
+            padding: 20px;
+          }
+
+          .payout-form__actions {
+            flex-direction: column;
+          }
+
+          .payout-form__actions .btn {
+            width: 100%;
+          }
         }
       `}</style>
     </div>

@@ -47,12 +47,14 @@ interface ShiftLoadingState {
 
 // Утилиты форматирования
 const formatCurrency = (amount: number): string => {
-  return new Intl.NumberFormat('ru-RU', {
+  const formatted = new Intl.NumberFormat('ru-RU', {
     style: 'currency',
     currency: 'RUB',
     minimumFractionDigits: 0,
     maximumFractionDigits: 0,
   }).format(amount);
+  
+  return formatted.replace(/\u00A0/g, '\u202F');
 };
 
 const formatDate = (dateString: string): string => {
@@ -69,7 +71,7 @@ const formatMonthName = (monthString: string): string => {
   return date.toLocaleDateString('ru-RU', {
     month: 'long',
     year: 'numeric',
-  }) + ' г.';
+  });
 };
 
 // Функции для статуса
@@ -82,153 +84,94 @@ const getStatusText = (status: string): string => {
   }
 };
 
-const getStatusColors = (status: string) => {
-  switch (status) {
-    case 'open':
-      return {
-        bg: 'bg-orange-50',
-        border: 'border-orange-200',
-        text: 'text-orange-800'
-      };
-    case 'partial':
-      return {
-        bg: 'bg-yellow-50',
-        border: 'border-yellow-200',
-        text: 'text-yellow-800'
-      };
-    case 'closed':
-      return {
-        bg: 'bg-green-50',
-        border: 'border-green-200',
-        text: 'text-green-800'
-      };
-    default:
-      return {
-        bg: 'bg-gray-50',
-        border: 'border-gray-200',
-        text: 'text-gray-800'
-      };
-  }
-};
-
 const getStatusCircle = (status: string) => {
   const statusText = getStatusText(status);
-  const colorMap: Record<string, string> = {
-    open: '#ef4444',     // red-500
-    partial: '#eab308',  // yellow-500
-    closed: '#22c55e',   // green-500
-    default: '#6b7280'   // gray-500
-  };
-  const bg = colorMap[status] || colorMap.default;
 
   return (
-    <div style={{ display: 'flex', justifyContent: 'center' }}>
-      <div
-        title={statusText}
-        style={{
-          width: '16px',
-          height: '16px',
-          borderRadius: '50%',
-          backgroundColor: bg,
-          position: 'relative',
-          zIndex: 1
-        }}
-      />
-    </div>
+    <span
+      className={`status-circle status-circle--${status}`}
+      title={statusText}
+      aria-label={statusText}
+    />
   );
-};
-
-// Сокращения услуг
-const getServiceAbbreviation = (service: string): string => {
-  const abbreviations: { [key: string]: string } = {
-    'Парная': 'П',
-    'Фирменный пар': 'Ф',
-    'Ознакомительный пар': 'О',
-    'Скрабирование': 'С',
-    'Заказ': 'З'
-  };
-  
-  return abbreviations[service] || service.charAt(0).toUpperCase();
 };
 
 // Компонент таблицы смен
 function ShiftsTable({ shifts }: { shifts: Shift[] }) {
   const { prices } = useServices();
+  const servicePrices = prices.filter(price => price.name !== 'Почасовая ставка');
   
   return (
-    <div className="mt-4">
-      <table className="shifts-table">
-        <thead>
-          <tr>
-            <th>ДАТА</th>
-            <th className="text-right">ЧАСЫ</th>
-            {prices
-              .filter(price => price.name !== 'Почасовая ставка')
-              .map(price => (
-                <th key={price.id || price.name} className="text-center">
-                  {getServiceAbbreviation(price.name)}
-                </th>
-              ))
-            }
-            <th className="text-center">МАСТЕРА</th>
-            <th className="text-right">ИТОГО</th>
-          </tr>
-        </thead>
-        <tbody>
-          {shifts.map((shift, index) => {
-            // Парсим данные услуг
-            let servicesData: { [key: string]: number } = {};
-            if (shift.services) {
-              try {
-                servicesData = typeof shift.services === 'string' 
-                  ? JSON.parse(shift.services) 
-                  : shift.services;
-              } catch (e) {
-                console.error('Error parsing services data:', e);
-              }
-            }
+    <div className="shift-card-list">
+      {shifts.map((shift) => {
+        // Парсим данные услуг
+        let servicesData: { [key: string]: number } = {};
+        if (shift.services) {
+          try {
+            servicesData = typeof shift.services === 'string' 
+              ? JSON.parse(shift.services) 
+              : shift.services;
+          } catch (e) {
+            console.error('Error parsing services data:', e);
+          }
+        }
 
-            // Функция для получения количества услуг с fallback на старые поля
-            const getServiceCount = (serviceName: string): number => {
-              // Сначала пытаемся получить из динамических услуг
-              if (servicesData[serviceName] !== undefined) {
-                return servicesData[serviceName];
-              }
-              
-              // Fallback на старые поля
-              switch (serviceName) {
-                case 'Путевое парение':
-                  return shift.steamBath || 0;
-                case 'Фирменное парение':
-                  return shift.brandSteam || 0;
-                case 'Ознакомительное парение':
-                  return shift.introSteam || 0;
-                case 'Скрабирование':
-                  return shift.scrubbing || 0;
-                default:
-                  return 0;
-              }
-            };
+        const getServiceCount = (serviceName: string): number => {
+          if (servicesData[serviceName] !== undefined) {
+            return servicesData[serviceName];
+          }
+          
+          switch (serviceName) {
+            case 'Путевое парение':
+              return shift.steamBath || 0;
+            case 'Фирменное парение':
+              return shift.brandSteam || 0;
+            case 'Ознакомительное парение':
+              return shift.introSteam || 0;
+            case 'Скрабирование':
+              return shift.scrubbing || 0;
+            default:
+              return 0;
+          }
+        };
 
-            return (
-              <tr key={shift.id} className="shift-row">
-                <td>{formatDate(shift.date)}</td>
-                <td className="text-right">{shift.hours}</td>
-                {prices
-                  .filter(price => price.name !== 'Почасовая ставка')
-                  .map(price => (
-                    <td key={price.id || price.name} className="text-center">
-                      {getServiceCount(price.name)}
-                    </td>
-                  ))
-                }
-                <td className="text-center">{shift.masters}</td>
-                <td className="text-right" style={{fontWeight:700}}>{formatCurrency(shift.amount)}</td>
-              </tr>
-            );
-          })}
-        </tbody>
-      </table>
+        const visibleServices = servicePrices
+          .map(price => ({
+            name: price.name,
+            count: getServiceCount(price.name)
+          }))
+          .filter(service => service.count > 0);
+        const totalFormatted = formatCurrency(shift.amount).replace(/\s*₽/, '₽');
+
+        return (
+          <div key={shift.id} className="shift-card">
+            <div className="shift-card__header">
+              <div>
+                <div className="shift-card__date">{formatDate(shift.date)}</div>
+                <div className="shift-card__masters">мастеров: {shift.masters}</div>
+              </div>
+              <span className="shift-card__hours-badge">
+                {shift.hours} ч
+              </span>
+            </div>
+
+            {visibleServices.length > 0 && (
+              <div className="shift-card__services">
+                {visibleServices.map(service => (
+                  <div className="shift-card__service-row" key={service.name}>
+                    <span>{service.name}</span>
+                    <span>{service.count}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            <div className="shift-card__total" aria-label="Итого за смену">
+              <span className="shift-card__total-value">{totalFormatted}</span>
+            </div>
+          </div>
+        );
+      })}
     </div>
   );
 }
@@ -246,7 +189,8 @@ function EmployeeRow({
   onToggle: (employeeId: number, month: string) => void;
 }) {
   const [expanded, setExpanded] = useState(false);
-  const employeeKey = `${employee.id}-${month}`;
+  const hasDebt = employee.outstanding > 0;
+  const statusBadgeLabel = hasDebt ? 'долг' : 'выплачено';
 
   const handleToggle = () => {
     const newExpanded = !expanded;
@@ -264,69 +208,62 @@ function EmployeeRow({
   return (
     <>
       <tr 
-        className="hover:bg-gray-50 cursor-pointer transition-colors border-b border-gray-100"
+        className="employee-row hover:bg-gray-50 cursor-pointer transition-colors border-b border-gray-100"
         onClick={handleToggle}
       >
-        <td className="py-3 px-4">
-          <div className="flex items-center">
-            <div className="font-medium text-gray-900">{employee.name}</div>
-          </div>
-        </td>
-        <td className="py-3 px-4 text-right font-medium">
-          {formatCurrency(employee.earned)}
-        </td>
-        <td className="py-3 px-4 text-right">
-          {formatCurrency(employee.paid)}
-        </td>
-        <td className="py-3 px-4 text-right">
-          <span className={employee.outstanding > 0 ? 'text-red-600 font-medium' : 'text-gray-900'}>
-            {formatCurrency(employee.outstanding)}
-          </span>
-        </td>
-        <td className="text-center" style={{ padding: '12px', position: 'relative' }}>
-          <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '8px' }}>
-            <div
-              title={employee.outstanding > 0 ? 'Долг' : 'Оплачено'}
-              style={{
-                width: '16px',
-                height: '16px',
-                borderRadius: '50%',
-                backgroundColor: employee.outstanding > 0 ? '#dc2626' : '#16a34a',
-                flexShrink: 0
-              }}
-            />
+        <td colSpan={2} className="employee-card-wrapper">
+          <div className="employee-card">
+            <div className="employee-card__header">
+              <h3 className="employee-card__name">{employee.name}</h3>
+              <span className={`employee-status-badge ${hasDebt ? 'employee-status-badge--debt' : 'employee-status-badge--paid'}`}>
+                <span className="employee-status-badge__dot" />
+                {statusBadgeLabel}
+              </span>
+            </div>
+            <div className="employee-card__balance balance-grid">
+              <div className="balance-col">
+                <div className="balance-label">Итого</div>
+                <div className="balance-value employee-card__amount">
+                  {formatCurrency(employee.earned)}
+                </div>
+              </div>
+              <div className="balance-col balance-col--right">
+                <div className="balance-label">Остаток</div>
+                <div className={`balance-value employee-card__amount ${hasDebt ? 'employee-card__amount--danger' : 'employee-card__amount--safe'}`}>
+                  {formatCurrency(employee.outstanding)}
+                </div>
+              </div>
+            </div>
           </div>
         </td>
       </tr>
       {expanded && (
         <tr>
-          <td colSpan={5} className="p-0">
-            <div className="px-4 pb-4 bg-gray-25">
-              {shiftState?.loading && (
-                <div className="text-center py-4 text-gray-600">
-                  Загрузка смен...
-                </div>
-              )}
-              {shiftState?.error && (
-                <div className="text-center py-4">
-                  <div className="text-red-600 mb-2">Ошибка загрузки</div>
-                  <button 
-                    onClick={handleRetry}
-                    className="px-3 py-1 bg-blue-500 text-white rounded text-sm hover:bg-blue-600 transition-colors"
-                  >
-                    Повторить
-                  </button>
-                </div>
-              )}
-              {shiftState?.data && shiftState.data.length === 0 && (
-                <div className="text-center py-4 text-gray-600">
-                  Смен нет
-                </div>
-              )}
-              {shiftState?.data && shiftState.data.length > 0 && (
-                <ShiftsTable shifts={shiftState.data} />
-              )}
-            </div>
+          <td colSpan={2} className="shift-card-cell">
+            {shiftState?.loading && (
+              <div className="text-center py-4 text-gray-600">
+                Загрузка смен...
+              </div>
+            )}
+            {shiftState?.error && (
+              <div className="text-center py-4">
+                <div className="text-red-600 mb-2">Ошибка загрузки</div>
+                <button 
+                  onClick={handleRetry}
+                  className="px-3 py-1 bg-blue-500 text-white rounded text-sm hover:bg-blue-600 transition-colors"
+                >
+                  Повторить
+                </button>
+              </div>
+            )}
+            {shiftState?.data && shiftState.data.length === 0 && (
+              <div className="text-center py-4 text-gray-600">
+                Смен нет
+              </div>
+            )}
+            {shiftState?.data && shiftState.data.length > 0 && (
+              <ShiftsTable shifts={shiftState.data} />
+            )}
           </td>
         </tr>
       )}
@@ -344,141 +281,56 @@ function MonthCard({
   shiftStates: ShiftLoadingState;
   onLoadShifts: (employeeId: number, monthStr: string) => void;
 }) {
-  const colors = getStatusColors(month.status);
+  const statusText = getStatusText(month.status);
+  const outstandingValueClass = [
+    'month-card__totals-value',
+    month.totalOutstanding > 0
+      ? 'month-card__totals-value--danger'
+      : month.totalOutstanding < 0
+        ? 'month-card__totals-value--success'
+        : ''
+  ].join(' ').trim();
 
   return (
     <div className={`form-section mb-8`}>
       {/* Заголовок месяца */}
-      <div className="mb-6" style={{background:'#fdf9f4', borderRadius:'10px', boxShadow:'0 4px 8px var(--shadow-light)', padding:'16px'}}>
+      <div className="month-card__header">
         <h2 className="text-2xl font-bold mb-4" style={{color:'var(--primary-color)'}}>
           {formatMonthName(month.month)}
         </h2>
-        <table style={{
-          width:'100%', 
-          borderCollapse:'collapse', 
-          tableLayout:'fixed',
-          border: '1px solid #e5e7eb'
-        }}>
-          <colgroup>
-            <col style={{width:'25%'}} />
-            <col style={{width:'25%'}} />
-            <col style={{width:'25%'}} />
-            <col style={{width:'25%'}} />
-          </colgroup>
-          <thead>
-            <tr style={{borderBottom: '2px solid #e5e7eb'}}>
-              <th style={{
-                color:'var(--secondary-color)', 
-                fontWeight:'500', 
-                fontSize:'12px', 
-                textTransform:'uppercase', 
-                letterSpacing:'0.1em', 
-                padding:'12px', 
-                textAlign:'left', 
-                verticalAlign:'middle',
-                borderRight: '1px solid #f3f4f6',
-                backgroundColor: '#f9fafb'
-              }}>Статус</th>
-              <th style={{
-                color:'var(--secondary-color)', 
-                fontWeight:'500', 
-                fontSize:'12px', 
-                textTransform:'uppercase', 
-                letterSpacing:'0.1em', 
-                padding:'12px', 
-                textAlign:'left', 
-                verticalAlign:'middle',
-                borderRight: '1px solid #f3f4f6',
-                backgroundColor: '#f9fafb'
-              }}>Заработано</th>
-              <th style={{
-                color:'var(--secondary-color)', 
-                fontWeight:'500', 
-                fontSize:'12px', 
-                textTransform:'uppercase', 
-                letterSpacing:'0.1em', 
-                padding:'12px', 
-                textAlign:'left', 
-                verticalAlign:'middle',
-                borderRight: '1px solid #f3f4f6',
-                backgroundColor: '#f9fafb'
-              }}>Выплачено</th>
-              <th style={{
-                color:'var(--secondary-color)', 
-                fontWeight:'500', 
-                fontSize:'12px', 
-                textTransform:'uppercase', 
-                letterSpacing:'0.1em', 
-                padding:'12px', 
-                textAlign:'left', 
-                verticalAlign:'middle',
-                backgroundColor: '#f9fafb'
-              }}>Остаток</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr>
-              <td style={{
-                color: colors.text.replace('text-','').includes('red') ? '#dc2626' : colors.text.replace('text-','').includes('green') ? '#16a34a' : 'var(--font-color)', 
-                fontWeight:'600', 
-                fontSize:'14px', 
-                padding:'12px', 
-                textAlign:'left', 
-                verticalAlign:'middle',
-                borderRight: '1px solid #f3f4f6',
-                position: 'relative'
-              }}>
-                <div style={{display: 'flex', alignItems: 'center', gap: '8px'}}>
-                  {getStatusCircle(month.status)}
-                </div>
-              </td>
-              <td style={{
-                color:'var(--font-color)', 
-                fontWeight:'600', 
-                fontSize:'14px', 
-                padding:'12px', 
-                textAlign:'left', 
-                verticalAlign:'middle',
-                borderRight: '1px solid #f3f4f6'
-              }}>
-                {formatCurrency(month.totalEarned)}
-              </td>
-              <td style={{
-                color:'var(--font-color)', 
-                fontWeight:'600', 
-                fontSize:'14px', 
-                padding:'12px', 
-                textAlign:'left', 
-                verticalAlign:'middle',
-                borderRight: '1px solid #f3f4f6'
-              }}>
-                {formatCurrency(month.totalPaid)}
-              </td>
-              <td style={{
-                color: month.totalOutstanding > 0 ? '#dc2626' : '#16a34a', 
-                fontWeight:'600', 
-                fontSize:'14px', 
-                padding:'12px', 
-                textAlign:'left', 
-                verticalAlign:'middle'
-              }}>
-                {formatCurrency(month.totalOutstanding)}
-              </td>
-            </tr>
-          </tbody>
-        </table>
+        <div className="month-card__status">
+          {getStatusCircle(month.status)}
+          <span>{statusText}</span>
+        </div>
+        <div className="month-card__totals" role="list">
+          <div className="month-card__totals-row" role="listitem">
+            <span className="month-card__totals-label">Заработано</span>
+            <span className="month-card__totals-value">
+              {formatCurrency(month.totalEarned)}
+            </span>
+          </div>
+          <div className="month-card__totals-row" role="listitem">
+            <span className="month-card__totals-label">Выплачено</span>
+            <span className="month-card__totals-value">
+              {formatCurrency(month.totalPaid)}
+            </span>
+          </div>
+          <div className="month-card__totals-row month-card__totals-row--accent" role="listitem">
+            <span className="month-card__totals-label">Остаток</span>
+            <span className={outstandingValueClass}>
+              {formatCurrency(month.totalOutstanding)}
+            </span>
+          </div>
+        </div>
       </div>
 
       {/* Таблица сотрудников */}
       <div style={{background:'var(--background-card)', borderRadius:'10px', boxShadow:'0 4px 8px var(--shadow-light)'}}>
-        <table className="shifts-table" style={{width:'100%'}}>
+        <table className="shifts-table shifts-table--employees" style={{width:'100%'}}>
           <thead>
             <tr>
               <th className="py-4 px-4">Сотрудник</th>
-              <th className="py-4 px-4 text-right">Заработано</th>
-              <th className="py-4 px-4 text-right">Выплачено</th>
-              <th className="py-4 px-4 text-right">Остаток</th>
-              <th className="py-4 px-4 text-center">Статус</th>
+              <th className="py-4 px-4 text-right">Баланс</th>
             </tr>
           </thead>
           <tbody>

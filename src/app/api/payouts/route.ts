@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { 
-  createPayout, 
   getPayoutsByUser, 
   getPayoutsByUserAndMonth,
   getMonthsWithShifts,
@@ -8,7 +7,8 @@ import {
   getPayoutsForMonth,
   getUserByTelegramId,
   getPayoutsDataOptimized,
-  getMonthStatus
+  getMonthStatus,
+  createPayoutWithCorrection
 } from '@/lib/db';
 import { getUserFromRequest, requireMasterForMutation } from '@/lib/auth-server';
 import { ensureDatabaseInitialized } from '@/lib/global-init';
@@ -80,18 +80,18 @@ export async function POST(request: NextRequest) {
       }, { status: 403 });
     }
 
-    // Создаем выплату
-    console.log('💰 Создаем выплату...');
-    const payout = await createPayout({
+    // Создаем выплату с корректировкой (учитывает переплаты)
+    console.log('💰 Создаем выплату с коррекцией...');
+    const { payout, overpayment } = await createPayoutWithCorrection({
       user_id: user.id!,
       month,
       amount: parseFloat(amount),
       date,
       comment: comment || ''
     });
-    console.log('✅ Выплата создана:', payout);
+    console.log('✅ Выплата создана:', payout, 'Переплата:', overpayment);
 
-    return NextResponse.json({ payout });
+    return NextResponse.json({ payout, overpayment });
   } catch (error) {
     console.error('❌ Ошибка при создании выплаты:', error);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });

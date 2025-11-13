@@ -4,14 +4,31 @@ import { useState, useEffect } from 'react';
 import Image from 'next/image';
 import { useRouter } from 'next/navigation';
 import { useServices } from '@/contexts/ServicesContext';
+import { getAuthHeaders } from '@/lib/auth';
+import { ToastContainer, ToastVariant, useToast } from '@/components/Toast';
+import { PaymentsList, Payment as HistoryPayment } from '@/components/PaymentsList';
 
 // Интерфейсы данных
+interface PayoutHistoryEntry {
+  id: number;
+  amount: number;
+  date: string;
+  comment?: string;
+  initiator_role?: 'admin' | 'master' | 'system' | null;
+  initiated_by?: number | null;
+  method?: string | null;
+  source?: string | null;
+  reversed_at?: string | null;
+  reversal_reason?: string | null;
+}
+
 interface Employee {
   id: number;
   name: string;
   earned: number;
   paid: number;
   outstanding: number;
+  recentPayouts?: PayoutHistoryEntry[];
 }
 
 interface Month {
@@ -37,12 +54,36 @@ interface Shift {
   services?: string | { [key: string]: number };
 }
 
-interface ShiftLoadingState {
-  [key: string]: {
-    loading: boolean;
-    error: boolean;
-    data: Shift[] | null;
+type ShiftLoadingEntry = {
+  loading: boolean;
+  error: boolean;
+  data: Shift[] | null;
+};
+
+type ShiftLoadingState = Record<string, ShiftLoadingEntry>;
+
+interface AdminPayoutUpdatePayload {
+  employeeId: number;
+  month: string;
+  summary: {
+    earnings: number;
+    totalPaid: number;
+    remaining: number;
   };
+  history?: PayoutHistoryEntry[];
+}
+
+interface AdminPayoutSummary {
+  earnings: number;
+  totalPaid: number;
+  remaining: number;
+}
+
+interface AdminPayoutMutationResponse {
+  summary?: AdminPayoutSummary;
+  history?: PayoutHistoryEntry[];
+  overpayment?: number;
+  error?: string;
 }
 
 // Утилиты форматирования
@@ -181,12 +222,16 @@ function EmployeeRow({
   employee, 
   month, 
   shiftState, 
-  onToggle 
+  onToggle,
+  onPayoutCreated,
+  onToast
 }: { 
   employee: Employee; 
   month: string;
   shiftState: ShiftLoadingState[string];
   onToggle: (employeeId: number, month: string) => void;
+  onPayoutCreated: (payload: AdminPayoutUpdatePayload) => void;
+  onToast: (message: string, variant?: ToastVariant) => void;
 }) {
   const [expanded, setExpanded] = useState(false);
   const hasDebt = employee.outstanding > 0;
@@ -194,7 +239,16 @@ function EmployeeRow({
   const [isPayoutModalOpen, setPayoutModalOpen] = useState(false);
   const [payoutAmount, setPayoutAmount] = useState('');
   const [payoutComment, setPayoutComment] = useState('');
-  const [payoutMethod, setPayoutMethod] = useState('cash');
+  const [isSubmittingPayout, setIsSubmittingPayout] = useState(false);
+  const [payoutError, setPayoutError] = useState<string | null>(null);
+  const recentPayouts = employee.recentPayouts ?? [];
+  const payments: HistoryPayment[] = recentPayouts.map((payout) => ({
+    id: payout.id,
+    date: formatDate(payout.date),
+    amount: payout.amount,
+    comment: payout.comment,
+    isAdmin: payout.initiator_role === 'admin',
+  }));
 
   const handleToggle = () => {
     const newExpanded = !expanded;
@@ -207,6 +261,113 @@ function EmployeeRow({
 
   const handleRetry = () => {
     onToggle(employee.id, month);
+  };
+
+  const handleOpenPayoutModal = (event: React.MouseEvent<HTMLButtonElement>) => {
+    event.stopPropagation();
+    setPayoutError(null);
+    setPayoutModalOpen(true);
+  };
+
+  const handleClosePayoutModal = () => {
+    setPayoutModalOpen(false);
+    setPayoutError(null);
+  };
+
+  const handlePayoutSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    setPayoutError(null);
+
+    const amountValue = parseFloat(payoutAmount);
+    if (!payoutAmount || Number.isNaN(amountValue) || amountValue <= 0) {
+      setPayoutError('Введите корректную сумму выплаты');
+      return;
+    }
+
+    setIsSubmittingPayout(true);
+    try {
+      const response = await fetch('/api/admin/payouts', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...getAuthHeaders()
+        },
+        body: JSON.stringify({
+          userId: employee.id,
+          month,
+          amount: amountValue,
+          comment: payoutComment.trim() || undefined,
+          source: 'admin:reports'
+        })
+      });
+
+      const payload = await response
+        .json()
+        .catch(() => null) as AdminPayoutMutationResponse | null;
+
+      if (!response.ok) {
+        const errorMessage = payload?.error || 'Не удалось сохранить выплату';
+        throw new Error(errorMessage);
+      }
+
+      if (payload?.summary) {
+        onPayoutCreated({
+          employeeId: employee.id,
+          month,
+          summary: payload.summary,
+          history: payload.history
+        });
+      }
+
+      setPayoutAmount('');
+      setPayoutComment('');
+      setPayoutModalOpen(false);
+
+      onToast('Выплата сохранена', 'success');
+      if (payload?.overpayment) {
+        onToast(`Переплата ${payload.overpayment} ₽ перенесена на следующий месяц`, 'info');
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Не удалось сохранить выплату';
+      setPayoutError(message);
+      onToast(message, 'error');
+    } finally {
+      setIsSubmittingPayout(false);
+    }
+  };
+
+  const handleDeletePayment = async (payoutId: string | number) => {
+    if (!window.confirm('Удалить выплату?')) {
+      return;
+    }
+    try {
+      const response = await fetch(`/api/admin/payouts/${payoutId}`, {
+        method: 'DELETE',
+        headers: getAuthHeaders()
+      });
+
+      const payload = await response
+        .json()
+        .catch(() => null) as AdminPayoutMutationResponse | null;
+      if (!response.ok) {
+        throw new Error(payload?.error || 'Не удалось удалить выплату');
+      }
+
+      if (payload?.summary) {
+        onPayoutCreated({
+          employeeId: employee.id,
+          month,
+          summary: payload.summary,
+          history: payload.history
+        });
+      }
+      onToast('Выплата удалена', 'success');
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Не удалось удалить выплату';
+      onToast(message, 'error');
+    } finally {
+      // nothing
+    }
   };
 
   return (
@@ -242,10 +403,16 @@ function EmployeeRow({
               <button
                 type="button"
                 className="btn btn-secondary btn-compact"
-                onClick={(event) => { event.stopPropagation(); setPayoutModalOpen(true); }}
+                onClick={handleOpenPayoutModal}
               >
                 Добавить выплату
               </button>
+            </div>
+            <div className="employee-card__history">
+              <div className="employee-card__history-header">
+                <span>Последние выплаты</span>
+              </div>
+              <PaymentsList payments={payments} onDelete={handleDeletePayment} />
             </div>
           </div>
         </td>
@@ -253,19 +420,13 @@ function EmployeeRow({
       {isPayoutModalOpen && (
         <tr>
           <td colSpan={2}>
-            <div className="payout-modal__backdrop" onClick={() => setPayoutModalOpen(false)}>
+            <div className="payout-modal__backdrop" onClick={handleClosePayoutModal}>
               <div className="payout-modal" onClick={(e) => e.stopPropagation()}>
                 <h3>Новая выплата</h3>
                 <p className="payout-modal__hint">
                   Фиксируем выплату для <strong>{employee.name}</strong>. Заполните данные и сохраните.
                 </p>
-                <form
-                  className="payout-form"
-                  onSubmit={(e) => {
-                    e.preventDefault();
-                    setPayoutModalOpen(false);
-                  }}
-                >
+                <form className="payout-form" onSubmit={handlePayoutSubmit}>
                   <label className="payout-form__label">
                     Сумма
                     <input
@@ -276,19 +437,11 @@ function EmployeeRow({
                       value={payoutAmount}
                       onChange={(e) => setPayoutAmount(e.target.value)}
                       placeholder="например, 3500"
+                      disabled={isSubmittingPayout}
                     />
-                  </label>
-                  <label className="payout-form__label">
-                    Способ
-                    <select
-                      className="payout-form__input"
-                      value={payoutMethod}
-                      onChange={(e) => setPayoutMethod(e.target.value)}
-                    >
-                      <option value="cash">Наличные</option>
-                      <option value="transfer">Перевод</option>
-                      <option value="other">Другое</option>
-                    </select>
+                    <span className="payout-form__hint">
+                      Доступно к выплате: {formatCurrency(Math.max(employee.outstanding, 0))}
+                    </span>
                   </label>
                   <label className="payout-form__label">
                     Комментарий
@@ -298,14 +451,26 @@ function EmployeeRow({
                       value={payoutComment}
                       onChange={(e) => setPayoutComment(e.target.value)}
                       placeholder="опционально"
+                      disabled={isSubmittingPayout}
                     />
+                    <span className="payout-form__hint">
+                      Видят все админы и мастер в истории выплат
+                    </span>
                   </label>
+                  {payoutError && (
+                    <div className="payout-form__error">
+                      {payoutError}
+                    </div>
+                  )}
                   <div className="payout-form__actions">
-                    <button type="submit" className="btn">Зафиксировать</button>
+                    <button type="submit" className="btn" disabled={isSubmittingPayout}>
+                      {isSubmittingPayout ? 'Сохраняем…' : 'Зафиксировать'}
+                    </button>
                     <button
                       type="button"
                       className="btn btn-secondary"
-                      onClick={() => setPayoutModalOpen(false)}
+                      onClick={handleClosePayoutModal}
+                      disabled={isSubmittingPayout}
                     >
                       Отмена
                     </button>
@@ -354,11 +519,15 @@ function EmployeeRow({
 function MonthCard({ 
   month, 
   shiftStates, 
-  onLoadShifts 
+  onLoadShifts,
+  onPayoutCreated,
+  onToast
 }: { 
   month: Month;
   shiftStates: ShiftLoadingState;
   onLoadShifts: (employeeId: number, monthStr: string) => void;
+  onPayoutCreated: (payload: AdminPayoutUpdatePayload) => void;
+  onToast: (message: string, variant?: ToastVariant) => void;
 }) {
   const statusText = getStatusText(month.status);
   const outstandingValueClass = [
@@ -422,6 +591,8 @@ function MonthCard({
                   month={month.month}
                   shiftState={shiftStates[employeeKey]}
                   onToggle={onLoadShifts}
+                  onPayoutCreated={onPayoutCreated}
+                  onToast={onToast}
                 />
               );
             })}
@@ -439,13 +610,54 @@ export default function ReportsPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [shiftStates, setShiftStates] = useState<ShiftLoadingState>({});
+  const { toasts, showToast, hideToast } = useToast();
+
+  const handlePayoutUpdate = (payload: AdminPayoutUpdatePayload) => {
+    setMonths(prevMonths => prevMonths.map((monthData) => {
+      if (monthData.month !== payload.month) {
+        return monthData;
+      }
+
+      const updatedEmployees = monthData.employees.map((emp) => 
+        emp.id === payload.employeeId
+          ? {
+              ...emp,
+              earned: payload.summary.earnings,
+              paid: payload.summary.totalPaid,
+              outstanding: payload.summary.remaining,
+              recentPayouts: payload.history ?? emp.recentPayouts
+            }
+          : emp
+      );
+
+      const totalEarned = updatedEmployees.reduce((sum, emp) => sum + emp.earned, 0);
+      const totalPaid = updatedEmployees.reduce((sum, emp) => sum + emp.paid, 0);
+      const totalOutstanding = updatedEmployees.reduce((sum, emp) => sum + emp.outstanding, 0);
+
+      let status = 'open';
+      if (totalOutstanding === 0) {
+        status = 'closed';
+      } else if (totalPaid > 0) {
+        status = 'partial';
+      }
+
+      return {
+        ...monthData,
+        employees: updatedEmployees,
+        totalEarned,
+        totalPaid,
+        totalOutstanding,
+        status
+      };
+    }));
+  };
 
   // Загрузка основных данных отчетов
   const loadReports = async () => {
     setLoading(true);
     setError(null);
     try {
-      const response = await fetch('/api/reports');
+      const response = await fetch('/api/reports', { headers: getAuthHeaders() });
       if (!response.ok) {
         throw new Error(`Ошибка загрузки отчетов: ${response.status} ${response.statusText}`);
       }
@@ -453,12 +665,11 @@ export default function ReportsPage() {
       const data = await response.json();
       
       if (Array.isArray(data)) {
+        const typedMonths = data as Month[];
         // Фильтруем месяцы, оставляя только те, где есть сотрудники с заработком
-        const filteredMonths = data.filter((month: any) => {
-          const hasEmployeesWithEarnings = month.employees && month.employees.some((emp: any) => {
-            return emp.earned > 0;
-          });
-          return hasEmployeesWithEarnings;
+        const filteredMonths = typedMonths.filter((month) => {
+          const employees = Array.isArray(month.employees) ? month.employees : [];
+          return employees.some((emp) => emp.earned > 0);
         });
         
         setMonths(filteredMonths);
@@ -483,7 +694,9 @@ export default function ReportsPage() {
     }));
 
     try {
-      const response = await fetch(`/api/reports/${employeeId}/shifts?month=${month}`);
+      const response = await fetch(`/api/reports/${employeeId}/shifts?month=${month}`, {
+        headers: getAuthHeaders()
+      });
       if (!response.ok) {
         throw new Error('Ошибка загрузки смен');
       }
@@ -579,16 +792,19 @@ export default function ReportsPage() {
             <div className="empty-title">Нет данных для отображения</div>
           </div>
         ) : (
-          months.map((month) => (
-            <MonthCard 
-              key={month.month} 
-              month={month}
-              shiftStates={shiftStates}
-              onLoadShifts={loadShifts}
-            />
-          ))
+            months.map((month) => (
+              <MonthCard 
+                key={month.month} 
+                month={month}
+                shiftStates={shiftStates}
+                onLoadShifts={loadShifts}
+                onPayoutCreated={handlePayoutUpdate}
+                onToast={showToast}
+              />
+            ))
         )}
       </div>
+      <ToastContainer toasts={toasts} onDismiss={hideToast} />
 
       <style jsx>{`
         .back-section {
@@ -637,6 +853,21 @@ export default function ReportsPage() {
           margin-top: 10px;
           display: flex;
           justify-content: flex-end;
+        }
+
+        .employee-card__history {
+          margin-top: 16px;
+          padding-top: 12px;
+          border-top: 1px solid rgba(44, 26, 15, 0.1);
+        }
+
+        .employee-card__history-header {
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          font-size: 12px;
+          color: rgba(44, 26, 15, 0.7);
+          margin-bottom: 8px;
         }
 
         .payout-modal__backdrop {
@@ -690,6 +921,20 @@ export default function ReportsPage() {
           border-radius: 10px;
           padding: 10px 12px;
           font-size: 14px;
+        }
+
+        .payout-form__hint {
+          font-size: 11px;
+          color: rgba(44, 26, 15, 0.6);
+        }
+
+        .payout-form__error {
+          border: 1px solid rgba(220, 38, 38, 0.3);
+          background: rgba(220, 38, 38, 0.08);
+          color: #b91c1c;
+          border-radius: 10px;
+          padding: 8px 12px;
+          font-size: 12px;
         }
 
         .payout-form__actions {

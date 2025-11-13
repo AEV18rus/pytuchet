@@ -1,6 +1,31 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getMonthlyReportsForAllMasters, getMonthsWithShiftsData } from '@/lib/db';
 
+type RawPayoutEntry = {
+  id: number;
+  amount: number | string;
+  date: string;
+  comment?: string;
+  initiator_role?: 'admin' | 'master' | 'system' | null;
+  initiated_by?: number | null;
+  method?: string | null;
+  source?: string | null;
+  reversed_at?: string | null;
+  reversed_by?: number | null;
+  reversal_reason?: string | null;
+};
+
+type RawReportRow = {
+  user_id: number;
+  first_name: string;
+  last_name: string;
+  display_name?: string;
+  earnings: number | string;
+  total_payouts: number | string;
+  remaining: number | string;
+  recent_payouts?: RawPayoutEntry[];
+};
+
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
@@ -26,16 +51,35 @@ export async function GET(request: NextRequest) {
     // Получаем данные для каждого месяца
     const monthsData = await Promise.all(
       filteredMonths.map(async (month) => {
-        const reports = await getMonthlyReportsForAllMasters(month);
+        const reports = await getMonthlyReportsForAllMasters(month) as RawReportRow[];
         
         // Группируем данные по сотрудникам
-        const employees = reports.map(report => ({
-          id: report.user_id,
-          name: report.display_name || `${report.first_name} ${report.last_name}`,
-          earned: parseFloat(report.earnings) || 0,
-          paid: parseFloat(report.total_payouts) || 0,
-          outstanding: parseFloat(report.remaining) || 0,
-        }));
+        const employees = reports.map(report => {
+          const recentPayouts = Array.isArray(report.recent_payouts)
+            ? report.recent_payouts.map((entry) => ({
+                id: entry.id,
+                amount: parseFloat(String(entry.amount)) || 0,
+                date: entry.date,
+                comment: entry.comment,
+                initiator_role: entry.initiator_role,
+                initiated_by: entry.initiated_by,
+                method: entry.method,
+                source: entry.source,
+                reversed_at: entry.reversed_at,
+                reversed_by: entry.reversed_by,
+                reversal_reason: entry.reversal_reason
+              }))
+            : [];
+
+          return {
+            id: report.user_id,
+            name: report.display_name || `${report.first_name} ${report.last_name}`,
+            earned: parseFloat(report.earnings) || 0,
+            paid: parseFloat(report.total_payouts) || 0,
+            outstanding: parseFloat(report.remaining) || 0,
+            recentPayouts,
+          };
+        });
 
         // Вычисляем общие суммы
         const totalEarned = employees.reduce((sum, emp) => sum + emp.earned, 0);

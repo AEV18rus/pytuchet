@@ -151,6 +151,13 @@ export interface Payout {
   amount: number;
   date: string; // Дата выплаты
   comment?: string;
+  initiated_by?: number | null;
+  initiator_role?: 'admin' | 'master' | 'system' | null;
+  method?: string | null;
+  source?: string | null;
+  reversed_at?: string | null;
+  reversed_by?: number | null;
+  reversal_reason?: string | null;
   created_at?: string;
 }
 
@@ -260,8 +267,26 @@ async function initPostgres() {
         amount REAL NOT NULL,
         date TEXT NOT NULL,
         comment TEXT,
+        initiated_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+        initiator_role TEXT,
+        method TEXT,
+        source TEXT,
+        reversed_at TIMESTAMP,
+        reversed_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+        reversal_reason TEXT,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       )
+    `);
+
+    await executeQuery(`
+      ALTER TABLE payouts
+      ADD COLUMN IF NOT EXISTS initiated_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+      ADD COLUMN IF NOT EXISTS initiator_role TEXT,
+      ADD COLUMN IF NOT EXISTS method TEXT,
+      ADD COLUMN IF NOT EXISTS source TEXT,
+      ADD COLUMN IF NOT EXISTS reversed_at TIMESTAMP,
+      ADD COLUMN IF NOT EXISTS reversed_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+      ADD COLUMN IF NOT EXISTS reversal_reason TEXT
     `);
 
     // Статус месяца (закрыт/открыт)
@@ -868,8 +893,34 @@ export async function cleanupUsersExceptTest(): Promise<void> {
 export async function createPayout(payout: Omit<Payout, 'id' | 'created_at'>): Promise<Payout> {
   try {
     const result = await executeQuery(
-      'INSERT INTO payouts (user_id, month, amount, date, comment) VALUES ($1, $2, $3, $4, $5) RETURNING *',
-      [payout.user_id, payout.month, payout.amount, payout.date, payout.comment]
+      `INSERT INTO payouts (
+        user_id, 
+        month, 
+        amount, 
+        date, 
+        comment, 
+        initiated_by, 
+        initiator_role, 
+        method, 
+        source, 
+        reversed_at,
+        reversed_by,
+        reversal_reason
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12) RETURNING *`,
+      [
+        payout.user_id,
+        payout.month,
+        payout.amount,
+        payout.date,
+        payout.comment ?? null,
+        payout.initiated_by !== undefined ? payout.initiated_by : payout.user_id,
+        payout.initiator_role ?? 'master',
+        payout.method ?? null,
+        payout.source ?? null,
+        payout.reversed_at ?? null,
+        payout.reversed_by ?? null,
+        payout.reversal_reason ?? null
+      ]
     );
     return result.rows[0] as Payout;
   } catch (error) {
@@ -906,16 +957,11 @@ export async function createPayoutWithCorrection(payout: Omit<Payout, 'id' | 'cr
       amount: actualAmount
     };
     
-    const result = await executeQuery(
-      'INSERT INTO payouts (user_id, month, amount, date, comment) VALUES ($1, $2, $3, $4, $5) RETURNING *',
-      [correctedPayout.user_id, correctedPayout.month, correctedPayout.amount, correctedPayout.date, correctedPayout.comment]
-    );
-    
-    const createdPayout = result.rows[0] as Payout;
+    const createdPayout = await createPayout(correctedPayout);
     
     // Если есть переплата, создаем перенос на следующий месяц
     if (overpayment > 0) {
-      await createCarryoverForOverpayment(payout.user_id, payout.month, overpayment, payout.date);
+      await createCarryoverForOverpayment(payout, overpayment);
     }
     
     return { 
@@ -929,11 +975,14 @@ export async function createPayoutWithCorrection(payout: Omit<Payout, 'id' | 'cr
 }
 
 // Вспомогательная функция для создания переноса переплаты
-async function createCarryoverForOverpayment(userId: number, fromMonth: string, amount: number, date: string): Promise<void> {
+async function createCarryoverForOverpayment(
+  originalPayout: Omit<Payout, 'id' | 'created_at'>,
+  amount: number
+): Promise<void> {
   try {
     // Вычисляем следующий месяц
-    const [year, month] = fromMonth.split('-').map(Number);
-    const nextDate = new Date(year, month, 1); // month уже 0-indexed после split
+    const [year, monthNumber] = originalPayout.month.split('-').map(Number);
+    const nextDate = new Date(year, monthNumber, 1); // monthNumber уже 1-индексирован
     const nextMonth = `${nextDate.getFullYear()}-${String(nextDate.getMonth() + 1).padStart(2, '0')}`;
     
     // Создаем комментарий для переноса
@@ -941,17 +990,21 @@ async function createCarryoverForOverpayment(userId: number, fromMonth: string, 
       'января', 'февраля', 'марта', 'апреля', 'мая', 'июня',
       'июля', 'августа', 'сентября', 'октября', 'ноября', 'декабря'
     ];
-    const fromMonthName = monthNames[month - 1];
+    const fromMonthName = monthNames[monthNumber - 1];
     const fromYear = year;
     const comment = `Перенос с ${fromMonthName} ${fromYear}`;
     
     // Создаем выплату-перенос в следующем месяце
     await createPayoutWithCorrection({
-      user_id: userId,
+      user_id: originalPayout.user_id,
       month: nextMonth,
       amount: amount,
-      date: date,
-      comment: comment
+      date: originalPayout.date,
+      comment: comment,
+      initiated_by: originalPayout.initiated_by,
+      initiator_role: originalPayout.initiator_role,
+      method: originalPayout.method,
+      source: 'carryover'
     });
   } catch (error) {
     console.error('Ошибка при создании переноса переплаты:', error);
@@ -988,10 +1041,11 @@ export async function getPayoutsByUserAndMonth(userId: number, month: string): P
 export async function deletePayout(id: number, userId: number): Promise<boolean> {
   try {
     const result = await executeQuery(
-      'DELETE FROM payouts WHERE id = $1 AND user_id = $2',
+      'DELETE FROM payouts WHERE id = $1 AND user_id = $2 RETURNING id',
       [id, userId]
     );
-    return (result.rowCount || 0) > 0;
+    const rows = Array.isArray((result as any).rows) ? (result as any).rows : [];
+    return rows.length > 0;
   } catch (error) {
     console.error('Ошибка при удалении выплаты:', error);
     throw error;
@@ -1005,6 +1059,59 @@ export async function getPayoutById(id: number): Promise<Payout | null> {
     return result.rows.length > 0 ? (result.rows[0] as Payout) : null;
   } catch (error) {
     console.error('Ошибка при получении выплаты по ID:', error);
+    throw error;
+  }
+}
+
+export async function deletePayoutForce(id: number): Promise<boolean> {
+  try {
+    const result = await executeQuery('DELETE FROM payouts WHERE id = $1 RETURNING id', [id]);
+    const rows = Array.isArray((result as any).rows) ? (result as any).rows : [];
+    return rows.length > 0;
+  } catch (error) {
+    console.error('Ошибка при принудительном удалении выплаты:', error);
+    throw error;
+  }
+}
+
+export async function getPayoutHistoryForUserAndMonth(
+  userId: number,
+  month: string,
+  limit = 5
+): Promise<Payout[]> {
+  try {
+    const result = await executeQuery(
+      `SELECT * FROM payouts
+       WHERE user_id = $1 AND month = $2
+       ORDER BY date DESC, created_at DESC, id DESC
+       LIMIT $3`,
+      [userId, month, limit]
+    );
+    return result.rows as Payout[];
+  } catch (error) {
+    console.error('Ошибка при получении истории выплат:', error);
+    throw error;
+  }
+}
+
+export async function markPayoutReversed(
+  payoutId: number,
+  adminId: number,
+  reason?: string
+): Promise<Payout | null> {
+  try {
+    const result = await executeQuery(
+      `UPDATE payouts
+       SET reversed_at = COALESCE(reversed_at, CURRENT_TIMESTAMP),
+           reversed_by = CASE WHEN reversed_at IS NULL THEN $2 ELSE reversed_by END,
+           reversal_reason = CASE WHEN reversed_at IS NULL THEN COALESCE($3, reversal_reason) ELSE reversal_reason END
+       WHERE id = $1
+       RETURNING *`,
+      [payoutId, adminId, reason ?? null]
+    );
+    return result.rows.length > 0 ? (result.rows[0] as Payout) : null;
+  } catch (error) {
+    console.error('Ошибка при пометке выплаты как откатанной:', error);
     throw error;
   }
 }
@@ -1090,7 +1197,7 @@ export async function getPayoutsForMonth(userId: number, month: string): Promise
     const result = await executeQuery(
       `SELECT COALESCE(SUM(amount), 0) as total_payouts
        FROM payouts 
-       WHERE user_id = $1 AND month = $2`,
+       WHERE user_id = $1 AND month = $2 AND reversed_at IS NULL`,
       [userId, month]
     );
     return parseFloat(result.rows[0]?.total_payouts || '0');
@@ -1113,7 +1220,7 @@ export async function getMonthTotals(month: string): Promise<{ earned: number; p
     const paidResult = await executeQuery(
       `SELECT COALESCE(SUM(amount), 0) as paid
        FROM payouts 
-       WHERE month = $1`,
+       WHERE month = $1 AND reversed_at IS NULL`,
       [month]
     );
 
@@ -1142,15 +1249,23 @@ export async function getPayoutsDataOptimized(userId: number): Promise<any[]> {
       monthly_payouts AS (
         SELECT 
           month,
-          -- Включаем все выплаты, включая переносы
-          SUM(amount) as raw_total_payouts,
+          -- Включаем все выплаты, но суммы учитываем только для неотмененных
+          SUM(CASE WHEN reversed_at IS NULL THEN amount ELSE 0 END) as raw_total_payouts,
           JSON_AGG(
             JSON_BUILD_OBJECT(
               'id', id,
               'amount', amount,
               'date', date,
-              'comment', comment
-            ) ORDER BY date DESC
+              'comment', comment,
+              'initiated_by', initiated_by,
+              'initiator_role', initiator_role,
+              'method', method,
+              'source', source,
+              'reversed_at', reversed_at,
+              'reversed_by', reversed_by,
+              'reversal_reason', reversal_reason
+            )
+            ORDER BY date DESC, created_at DESC, id DESC
           ) as payouts
         FROM payouts 
         WHERE user_id = $1
@@ -1213,7 +1328,7 @@ export async function getMonthlyReportsForAllMasters(month?: string): Promise<an
         monthly_payouts AS (
           SELECT 
             p.user_id,
-            SUM(p.amount) as raw_total_payouts
+            SUM(CASE WHEN p.reversed_at IS NULL THEN p.amount ELSE 0 END) as raw_total_payouts
           FROM payouts p
           WHERE p.month = $1
           GROUP BY p.user_id
@@ -1237,9 +1352,47 @@ export async function getMonthlyReportsForAllMasters(month?: string): Promise<an
             WHEN COALESCE(mp.raw_total_payouts, 0) >= me.earnings THEN 'completed'
             WHEN COALESCE(mp.raw_total_payouts, 0) > 0 THEN 'partial'
             ELSE 'unpaid'
-          END as status
+          END as status,
+          COALESCE(rp.recent_payouts, '[]'::json) as recent_payouts
         FROM monthly_earnings me
         LEFT JOIN monthly_payouts mp ON me.user_id = mp.user_id
+        LEFT JOIN LATERAL (
+          SELECT JSON_AGG(
+            JSON_BUILD_OBJECT(
+              'id', payout_row.id,
+              'amount', payout_row.amount,
+              'date', payout_row.date,
+              'comment', payout_row.comment,
+              'initiated_by', payout_row.initiated_by,
+              'initiator_role', payout_row.initiator_role,
+              'method', payout_row.method,
+              'source', payout_row.source,
+              'reversed_at', payout_row.reversed_at,
+              'reversed_by', payout_row.reversed_by,
+              'reversal_reason', payout_row.reversal_reason
+            )
+            ORDER BY payout_row.date DESC, payout_row.created_at DESC, payout_row.id DESC
+          ) as recent_payouts
+          FROM (
+            SELECT 
+              p.id,
+              p.amount,
+              p.date,
+              p.comment,
+              p.initiated_by,
+              p.initiator_role,
+              p.method,
+              p.source,
+              p.reversed_at,
+              p.reversed_by,
+              p.reversal_reason,
+              p.created_at
+            FROM payouts p
+            WHERE p.user_id = me.user_id AND p.month = $1
+            ORDER BY p.date DESC, p.created_at DESC, p.id DESC
+            LIMIT 5
+          ) payout_row
+        ) rp ON true
         ORDER BY me.earnings DESC
       `;
       
@@ -1271,7 +1424,7 @@ export async function getMonthlyReportsForAllMasters(month?: string): Promise<an
           SELECT 
             p.user_id,
             p.month,
-            SUM(p.amount) as raw_total_payouts
+            SUM(CASE WHEN p.reversed_at IS NULL THEN p.amount ELSE 0 END) as raw_total_payouts
           FROM payouts p
           GROUP BY p.user_id, p.month
         )
@@ -1294,9 +1447,47 @@ export async function getMonthlyReportsForAllMasters(month?: string): Promise<an
             WHEN COALESCE(mp.raw_total_payouts, 0) >= me.earnings THEN 'completed'
             WHEN COALESCE(mp.raw_total_payouts, 0) > 0 THEN 'partial'
             ELSE 'unpaid'
-          END as status
+          END as status,
+          COALESCE(rp.recent_payouts, '[]'::json) as recent_payouts
         FROM monthly_earnings me
         LEFT JOIN monthly_payouts mp ON me.user_id = mp.user_id AND me.month = mp.month
+        LEFT JOIN LATERAL (
+          SELECT JSON_AGG(
+            JSON_BUILD_OBJECT(
+              'id', payout_row.id,
+              'amount', payout_row.amount,
+              'date', payout_row.date,
+              'comment', payout_row.comment,
+              'initiated_by', payout_row.initiated_by,
+              'initiator_role', payout_row.initiator_role,
+              'method', payout_row.method,
+              'source', payout_row.source,
+              'reversed_at', payout_row.reversed_at,
+              'reversed_by', payout_row.reversed_by,
+              'reversal_reason', payout_row.reversal_reason
+            )
+            ORDER BY payout_row.date DESC, payout_row.created_at DESC, payout_row.id DESC
+          ) as recent_payouts
+          FROM (
+            SELECT 
+              p.id,
+              p.amount,
+              p.date,
+              p.comment,
+              p.initiated_by,
+              p.initiator_role,
+              p.method,
+              p.source,
+              p.reversed_at,
+              p.reversed_by,
+              p.reversal_reason,
+              p.created_at
+            FROM payouts p
+            WHERE p.user_id = me.user_id AND p.month = me.month
+            ORDER BY p.date DESC, p.created_at DESC, p.id DESC
+            LIMIT 5
+          ) payout_row
+        ) rp ON true
         ORDER BY me.month DESC, me.earnings DESC
       `;
       
@@ -1369,7 +1560,12 @@ export async function createCarryoverPayout(carryover: Omit<Carryover, 'id' | 'c
       month: carryover.to_month,
       amount: carryover.amount,
       date: payoutDate,
-      comment: comment
+      comment: comment,
+      initiated_by: null,
+      initiator_role: 'system',
+      method: 'carryover',
+      source: 'carryover',
+      reversed_at: null
     });
 
     return payout;
@@ -1488,7 +1684,12 @@ async function processOverpaymentCarryoverOptimized(
       month: nextMonth,
       amount: remainingOverpayment,
       date: payoutDate,
-      comment: carryoverComment
+      comment: carryoverComment,
+      initiated_by: null,
+      initiator_role: 'system',
+      method: 'carryover',
+      source: 'carryover',
+      reversed_at: null
     });
     
     // Если заработок следующего месяца покрывает всю переплату

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import Image from 'next/image';
 import { useRouter } from 'next/navigation';
 import { useTelegramAuth } from '@/hooks/useTelegramAuth';
@@ -30,6 +30,11 @@ interface Payout {
   amount: number;
   date: string;
   comment?: string;
+  initiator_role?: 'admin' | 'master' | 'system' | null;
+  method?: string | null;
+  source?: string | null;
+  reversed_at?: string | null;
+  reversal_reason?: string | null;
 }
 
 interface MonthData {
@@ -47,6 +52,13 @@ interface User {
   telegram_id: number;
   first_name: string;
   last_name: string;
+  username?: string;
+}
+
+interface TelegramInitUser {
+  id: number;
+  first_name: string;
+  last_name?: string;
   username?: string;
 }
 
@@ -79,7 +91,7 @@ export default function PayoutsPage() {
           const initData = tg.initDataUnsafe;
           if (initData?.user) {
             // Приводим объект Telegram к форме нашего пользователя
-            const tgUser = initData.user as any;
+            const tgUser = initData.user as TelegramInitUser;
             setUser({
               id: tgUser.id,
               telegram_id: tgUser.id,
@@ -125,13 +137,7 @@ export default function PayoutsPage() {
     initializeUser();
   }, []);
 
-  useEffect(() => {
-    if (user) {
-      fetchPayouts();
-    }
-  }, [user, selectedYear]);
-
-  const fetchPayouts = async () => {
+  const fetchPayouts = useCallback(async () => {
     if (!user) return;
     
     try {
@@ -179,7 +185,13 @@ export default function PayoutsPage() {
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [selectedYear, user]);
+
+  useEffect(() => {
+    if (user) {
+      fetchPayouts();
+    }
+  }, [user, fetchPayouts]);
 
   const handleAddPayout = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -245,15 +257,36 @@ export default function PayoutsPage() {
     setExpandedMonths(newExpanded);
   };
 
-  const formatMonth = (monthStr: string) => {
-    const date = new Date(monthStr + '-01');
-    return date.toLocaleDateString('ru-RU', { 
-      month: 'long', 
-      year: 'numeric' 
-    });
-  };
+const formatMonth = (monthStr: string) => {
+  const date = new Date(monthStr + '-01');
+  return date.toLocaleDateString('ru-RU', { 
+    month: 'long', 
+    year: 'numeric' 
+  });
+};
 
-  const getStatusColor = (remaining: number) => {
+const formatDateTime = (dateString: string) => {
+  const date = new Date(dateString);
+  return date.toLocaleString('ru-RU', {
+    day: '2-digit',
+    month: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit'
+  });
+};
+
+const getInitiatorLabel = (role?: string | null) => {
+  switch (role) {
+    case 'admin':
+      return 'Администратор';
+    case 'system':
+      return 'Система';
+    default:
+      return 'Мастер';
+  }
+};
+
+const getStatusColor = (remaining: number) => {
     if (remaining <= 0) return 'green';
     if (remaining < 5000) return 'orange';
     return 'red';
@@ -501,21 +534,32 @@ export default function PayoutsPage() {
                     <h4 className="history-title">История выплат:</h4>
                     <div className="history-list">
                       {monthData.payouts.map((payout) => (
-                        <div key={payout.id} className="history-item">
+                        <div 
+                          key={payout.id} 
+                          className={`history-item ${payout.reversed_at ? 'history-item--reversed' : ''}`}
+                        >
                           <div className="history-info">
                             <div className="history-amount">{payout.amount.toLocaleString()} ₽</div>
                             <div className="history-details">
-                              {new Date(payout.date).toLocaleDateString('ru-RU')}
+                              {new Date(payout.date).toLocaleDateString('ru-RU')} · {getInitiatorLabel(payout.initiator_role)}
                               {payout.comment && ` • ${payout.comment}`}
                             </div>
+                            {payout.reversed_at && (
+                              <div className="history-reversed-note">
+                                Отменено {formatDateTime(payout.reversed_at)}
+                                {payout.reversal_reason && ` • ${payout.reversal_reason}`}
+                              </div>
+                            )}
                           </div>
-                          <button
-                            onClick={() => handleDeletePayout(payout.id)}
-                            className="btn btn-danger btn-small"
-                            disabled={authUser?.role === 'demo'}
-                          >
-                            Удалить
-                          </button>
+                          {!payout.reversed_at && (
+                            <button
+                              onClick={() => handleDeletePayout(payout.id)}
+                              className="btn btn-danger btn-small"
+                              disabled={authUser?.role === 'demo'}
+                            >
+                              Удалить
+                            </button>
+                          )}
                         </div>
                       ))}
                     </div>
@@ -1214,6 +1258,12 @@ export default function PayoutsPage() {
           transition: all 0.2s ease;
         }
 
+        .history-item--reversed {
+          opacity: 0.7;
+          border-style: dashed;
+          background: rgba(220, 38, 38, 0.05);
+        }
+
         .history-item:hover {
           background: rgba(255, 255, 255, 0.9);
           box-shadow: 0 2px 8px var(--shadow-light);
@@ -1233,6 +1283,12 @@ export default function PayoutsPage() {
         .history-details {
           font-size: 14px;
           color: var(--secondary-color);
+        }
+
+        .history-reversed-note {
+          font-size: 13px;
+          color: #b45309;
+          margin-top: 4px;
         }
 
         .modal-overlay {

@@ -1,12 +1,13 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, KeyboardEvent } from 'react';
 import Image from 'next/image';
 import { useRouter } from 'next/navigation';
 import { useServices } from '@/contexts/ServicesContext';
 import { getAuthHeaders } from '@/lib/auth';
 import { ToastContainer, ToastVariant, useToast } from '@/components/Toast';
 import { PaymentsList, Payment as HistoryPayment } from '@/components/PaymentsList';
+import { NewPaymentForm } from '@/components/NewPaymentForm';
 
 // Интерфейсы данных
 interface PayoutHistoryEntry {
@@ -237,10 +238,7 @@ function EmployeeRow({
   const hasDebt = employee.outstanding > 0;
   const statusBadgeLabel = hasDebt ? 'долг' : 'выплачено';
   const [isPayoutModalOpen, setPayoutModalOpen] = useState(false);
-  const [payoutAmount, setPayoutAmount] = useState('');
-  const [payoutComment, setPayoutComment] = useState('');
   const [isSubmittingPayout, setIsSubmittingPayout] = useState(false);
-  const [payoutError, setPayoutError] = useState<string | null>(null);
   const recentPayouts = employee.recentPayouts ?? [];
   const payments: HistoryPayment[] = recentPayouts.map((payout) => ({
     id: payout.id,
@@ -265,25 +263,14 @@ function EmployeeRow({
 
   const handleOpenPayoutModal = (event: React.MouseEvent<HTMLButtonElement>) => {
     event.stopPropagation();
-    setPayoutError(null);
     setPayoutModalOpen(true);
   };
 
   const handleClosePayoutModal = () => {
     setPayoutModalOpen(false);
-    setPayoutError(null);
   };
 
-  const handlePayoutSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    setPayoutError(null);
-
-    const amountValue = parseFloat(payoutAmount);
-    if (!payoutAmount || Number.isNaN(amountValue) || amountValue <= 0) {
-      setPayoutError('Введите корректную сумму выплаты');
-      return;
-    }
-
+  const handleCreatePayment = async ({ amount, comment }: { amount: number; comment: string }) => {
     setIsSubmittingPayout(true);
     try {
       const response = await fetch('/api/admin/payouts', {
@@ -295,8 +282,8 @@ function EmployeeRow({
         body: JSON.stringify({
           userId: employee.id,
           month,
-          amount: amountValue,
-          comment: payoutComment.trim() || undefined,
+          amount,
+          comment: comment || undefined,
           source: 'admin:reports'
         })
       });
@@ -319,8 +306,6 @@ function EmployeeRow({
         });
       }
 
-      setPayoutAmount('');
-      setPayoutComment('');
       setPayoutModalOpen(false);
 
       onToast('Выплата сохранена', 'success');
@@ -329,7 +314,6 @@ function EmployeeRow({
       }
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Не удалось сохранить выплату';
-      setPayoutError(message);
       onToast(message, 'error');
     } finally {
       setIsSubmittingPayout(false);
@@ -373,13 +357,26 @@ function EmployeeRow({
   return (
     <>
       <tr 
-        className="employee-row hover:bg-gray-50 cursor-pointer transition-colors border-b border-gray-100"
-        onClick={handleToggle}
+        className="employee-row hover:bg-gray-50 transition-colors border-b border-gray-100"
       >
         <td colSpan={2} className="employee-card-wrapper">
           <div className="employee-card">
             <div className="employee-card__header">
-              <h3 className="employee-card__name">{employee.name}</h3>
+              <h3
+                className="employee-card__name-button"
+                role="button"
+                tabIndex={0}
+                aria-expanded={expanded}
+                onClick={handleToggle}
+                onKeyDown={(event: KeyboardEvent<HTMLHeadingElement>) => {
+                  if (event.key === 'Enter' || event.key === ' ') {
+                    event.preventDefault();
+                    handleToggle();
+                  }
+                }}
+              >
+                {employee.name}
+              </h3>
               <span className={`employee-status-badge ${hasDebt ? 'employee-status-badge--debt' : 'employee-status-badge--paid'}`}>
                 <span className="employee-status-badge__dot" />
                 {statusBadgeLabel}
@@ -423,59 +420,11 @@ function EmployeeRow({
             <div className="payout-modal__backdrop" onClick={handleClosePayoutModal}>
               <div className="payout-modal" onClick={(e) => e.stopPropagation()}>
                 <h3>Новая выплата</h3>
-                <p className="payout-modal__hint">
-                  Фиксируем выплату для <strong>{employee.name}</strong>. Заполните данные и сохраните.
-                </p>
-                <form className="payout-form" onSubmit={handlePayoutSubmit}>
-                  <label className="payout-form__label">
-                    Сумма
-                    <input
-                      type="number"
-                      min="0"
-                      step="100"
-                      className="payout-form__input"
-                      value={payoutAmount}
-                      onChange={(e) => setPayoutAmount(e.target.value)}
-                      placeholder="например, 3500"
-                      disabled={isSubmittingPayout}
-                    />
-                    <span className="payout-form__hint">
-                      Доступно к выплате: {formatCurrency(Math.max(employee.outstanding, 0))}
-                    </span>
-                  </label>
-                  <label className="payout-form__label">
-                    Комментарий
-                    <textarea
-                      className="payout-form__input"
-                      rows={3}
-                      value={payoutComment}
-                      onChange={(e) => setPayoutComment(e.target.value)}
-                      placeholder="опционально"
-                      disabled={isSubmittingPayout}
-                    />
-                    <span className="payout-form__hint">
-                      Видят все админы и мастер в истории выплат
-                    </span>
-                  </label>
-                  {payoutError && (
-                    <div className="payout-form__error">
-                      {payoutError}
-                    </div>
-                  )}
-                  <div className="payout-form__actions">
-                    <button type="submit" className="btn" disabled={isSubmittingPayout}>
-                      {isSubmittingPayout ? 'Сохраняем…' : 'Зафиксировать'}
-                    </button>
-                    <button
-                      type="button"
-                      className="btn btn-secondary"
-                      onClick={handleClosePayoutModal}
-                      disabled={isSubmittingPayout}
-                    >
-                      Отмена
-                    </button>
-                  </div>
-                </form>
+                <NewPaymentForm
+                  onSubmit={handleCreatePayment}
+                  onCancel={handleClosePayoutModal}
+                  isSubmitting={isSubmittingPayout}
+                />
               </div>
             </div>
           </td>
@@ -849,6 +798,29 @@ export default function ReportsPage() {
           letter-spacing: 0.15px;
         }
 
+        .employee-card__header {
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          margin-bottom: 12px;
+        }
+
+        .employee-card__name-button {
+          cursor: pointer;
+          font-size: 20px;
+          font-weight: 700;
+          color: var(--primary-color);
+          display: inline;
+          line-height: 1.2;
+          margin: 0;
+          padding: 0;
+        }
+
+        .employee-card__name-button:focus-visible {
+          outline: 2px solid rgba(44, 26, 15, 0.4);
+          border-radius: 4px;
+        }
+
         .employee-card__actions {
           margin-top: 10px;
           display: flex;
@@ -895,67 +867,9 @@ export default function ReportsPage() {
           color: var(--primary-color);
         }
 
-        .payout-modal__hint {
-          margin-bottom: 16px;
-          font-size: 14px;
-          color: rgba(44, 26, 15, 0.8);
-        }
-
-        .payout-form {
-          display: flex;
-          flex-direction: column;
-          gap: 12px;
-        }
-
-        .payout-form__label {
-          display: flex;
-          flex-direction: column;
-          font-size: 13px;
-          font-weight: 600;
-          color: var(--primary-color);
-          gap: 6px;
-        }
-
-        .payout-form__input {
-          border: 1px solid rgba(74, 43, 27, 0.3);
-          border-radius: 10px;
-          padding: 10px 12px;
-          font-size: 14px;
-        }
-
-        .payout-form__hint {
-          font-size: 11px;
-          color: rgba(44, 26, 15, 0.6);
-        }
-
-        .payout-form__error {
-          border: 1px solid rgba(220, 38, 38, 0.3);
-          background: rgba(220, 38, 38, 0.08);
-          color: #b91c1c;
-          border-radius: 10px;
-          padding: 8px 12px;
-          font-size: 12px;
-        }
-
-        .payout-form__actions {
-          display: flex;
-          gap: 10px;
-          justify-content: flex-end;
-          margin-top: 8px;
-          flex-wrap: wrap;
-        }
-
         @media (max-width: 640px) {
           .payout-modal {
             padding: 20px;
-          }
-
-          .payout-form__actions {
-            flex-direction: column;
-          }
-
-          .payout-form__actions .btn {
-            width: 100%;
           }
         }
       `}</style>

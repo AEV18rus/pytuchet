@@ -74,9 +74,9 @@ export async function GET(request: NextRequest) {
           return {
             id: report.user_id,
             name: report.display_name || `${report.first_name} ${report.last_name}`,
-            earned: parseFloat(report.earnings) || 0,
-            paid: parseFloat(report.total_payouts) || 0,
-            outstanding: parseFloat(report.remaining) || 0,
+            earned: parseFloat(String(report.earnings)) || 0,
+            paid: parseFloat(String(report.total_payouts)) || 0,
+            outstanding: parseFloat(String(report.remaining)) || 0,
             recentPayouts,
           };
         });

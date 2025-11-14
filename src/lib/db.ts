@@ -1686,7 +1686,7 @@ async function processOverpaymentCarryoverOptimized(
       date: payoutDate,
       comment: carryoverComment,
       initiated_by: null,
-      initiator_role: 'system',
+      initiator_role: 'system' as const,
       method: 'carryover',
       source: 'carryover',
       reversed_at: null

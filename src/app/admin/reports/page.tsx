@@ -84,6 +84,7 @@ interface AdminPayoutMutationResponse {
   summary?: AdminPayoutSummary;
   history?: PayoutHistoryEntry[];
   overpayment?: number;
+  payout?: { amount: number };
   error?: string;
 }
 
@@ -136,6 +137,12 @@ const getStatusCircle = (status: string) => {
       aria-label={statusText}
     />
   );
+};
+
+const getNextMonthString = (monthString: string): string => {
+  const [year, month] = monthString.split('-').map(Number);
+  const nextDate = new Date(year, month, 1);
+  return `${nextDate.getFullYear()}-${String(nextDate.getMonth() + 1).padStart(2, '0')}`;
 };
 
 // Компонент таблицы смен
@@ -225,7 +232,8 @@ function EmployeeRow({
   shiftState, 
   onToggle,
   onPayoutCreated,
-  onToast
+  onToast,
+  onReloadMonth
 }: { 
   employee: Employee; 
   month: string;
@@ -233,6 +241,7 @@ function EmployeeRow({
   onToggle: (employeeId: number, month: string) => void;
   onPayoutCreated: (payload: AdminPayoutUpdatePayload) => void;
   onToast: (message: string, variant?: ToastVariant) => void;
+  onReloadMonth?: (month: string) => Promise<void>;
 }) {
   const [expanded, setExpanded] = useState(false);
   const hasDebt = employee.outstanding > 0;
@@ -308,9 +317,20 @@ function EmployeeRow({
 
       setPayoutModalOpen(false);
 
-      onToast('Выплата сохранена', 'success');
+      if (payload?.payout) {
+        onToast(`Выплата ${formatCurrency(payload.payout.amount)} сохранена`, 'success');
+      } else {
+        onToast('Выплата сохранена', 'success');
+      }
+
       if (payload?.overpayment) {
-        onToast(`Переплата ${payload.overpayment} ₽ перенесена на следующий месяц`, 'info');
+        onToast(`Переплата ${formatCurrency(payload.overpayment)} перенесена на следующий месяц`, 'info');
+        if (onReloadMonth) {
+          const nextMonth = getNextMonthString(month);
+          onReloadMonth(nextMonth).catch((error) => {
+            console.error('Ошибка обновления следующего месяца:', error);
+          });
+        }
       }
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Не удалось сохранить выплату';
@@ -470,13 +490,15 @@ function MonthCard({
   shiftStates, 
   onLoadShifts,
   onPayoutCreated,
-  onToast
+  onToast,
+  onReloadMonth
 }: { 
   month: Month;
   shiftStates: ShiftLoadingState;
   onLoadShifts: (employeeId: number, monthStr: string) => void;
   onPayoutCreated: (payload: AdminPayoutUpdatePayload) => void;
   onToast: (message: string, variant?: ToastVariant) => void;
+  onReloadMonth: (month: string) => Promise<void>;
 }) {
   const statusText = getStatusText(month.status);
   const outstandingValueClass = [
@@ -542,6 +564,7 @@ function MonthCard({
                   onToggle={onLoadShifts}
                   onPayoutCreated={onPayoutCreated}
                   onToast={onToast}
+                  onReloadMonth={onReloadMonth}
                 />
               );
             })}
@@ -630,6 +653,31 @@ export default function ReportsPage() {
       setError(err instanceof Error ? err.message : 'Неизвестная ошибка');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const reloadMonthData = async (targetMonth: string) => {
+    try {
+      const response = await fetch(`/api/reports?from=${targetMonth}&to=${targetMonth}`, {
+        headers: getAuthHeaders()
+      });
+      if (!response.ok) {
+        return;
+      }
+      const data = await response.json();
+      if (!Array.isArray(data) || data.length === 0) {
+        return;
+      }
+      const updatedMonth = data[0] as Month;
+      setMonths(prevMonths => {
+        const exists = prevMonths.some(m => m.month === updatedMonth.month);
+        const nextList = exists
+          ? prevMonths.map(m => (m.month === updatedMonth.month ? updatedMonth : m))
+          : [...prevMonths, updatedMonth];
+        return nextList.sort((a, b) => b.month.localeCompare(a.month));
+      });
+    } catch (error) {
+      console.error('Ошибка обновления месяца после переплаты:', error);
     }
   };
 
@@ -742,14 +790,15 @@ export default function ReportsPage() {
           </div>
         ) : (
             months.map((month) => (
-              <MonthCard 
-                key={month.month} 
-                month={month}
-                shiftStates={shiftStates}
-                onLoadShifts={loadShifts}
-                onPayoutCreated={handlePayoutUpdate}
-                onToast={showToast}
-              />
+            <MonthCard 
+              key={month.month} 
+              month={month}
+              shiftStates={shiftStates}
+              onLoadShifts={loadShifts}
+              onPayoutCreated={handlePayoutUpdate}
+              onToast={showToast}
+              onReloadMonth={reloadMonthData}
+            />
             ))
         )}
       </div>

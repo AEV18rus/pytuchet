@@ -1494,7 +1494,8 @@ export async function getPayoutsDataOptimized(userId: number): Promise<any[]> {
               'source', source,
               'reversed_at', reversed_at,
               'reversed_by', reversed_by,
-              'reversal_reason', reversal_reason
+              'reversal_reason', reversal_reason,
+              'is_advance', is_advance
             )
             ORDER BY date DESC, created_at DESC, id DESC
           ) as payouts
@@ -1505,8 +1506,13 @@ export async function getPayoutsDataOptimized(userId: number): Promise<any[]> {
       SELECT 
         me.month,
         me.earnings,
-        -- Ограничиваем выплаченную сумму заработанной суммой для корректного отображения
+        -- Реальная сумма всех выплат
+        COALESCE(mp.raw_total_payouts, 0) as total_payouts_real,
+        -- Сумма для отображения (не больше заработка)
         LEAST(COALESCE(mp.raw_total_payouts, 0), me.earnings) as total_payouts,
+        -- Сумма аванса (если выплаты превышают заработок)
+        GREATEST(0, COALESCE(mp.raw_total_payouts, 0) - me.earnings) as advance_amount,
+        -- Остаток к выплате (если заработок больше выплат)
         GREATEST(0, me.earnings - COALESCE(mp.raw_total_payouts, 0)) as remaining,
         CASE 
           WHEN me.earnings > 0 THEN 
@@ -1577,7 +1583,8 @@ export async function getMonthlyReportsForAllMasters(month?: string): Promise<an
           me.scrubbing,
           me.zaparnik,
           me.earnings,
-          LEAST(COALESCE(mp.raw_total_payouts, 0), me.earnings) as total_payouts,
+          me.earnings,
+          COALESCE(mp.raw_total_payouts, 0) as total_payouts,
           GREATEST(0, me.earnings - COALESCE(mp.raw_total_payouts, 0)) as remaining,
           CASE 
             WHEN COALESCE(mp.raw_total_payouts, 0) >= me.earnings THEN 'completed'
@@ -1600,7 +1607,8 @@ export async function getMonthlyReportsForAllMasters(month?: string): Promise<an
               'source', payout_row.source,
               'reversed_at', payout_row.reversed_at,
               'reversed_by', payout_row.reversed_by,
-              'reversal_reason', payout_row.reversal_reason
+              'reversal_reason', payout_row.reversal_reason,
+              'is_advance', payout_row.is_advance
             )
             ORDER BY payout_row.date DESC, payout_row.created_at DESC, payout_row.id DESC
           ) as recent_payouts
@@ -1617,6 +1625,7 @@ export async function getMonthlyReportsForAllMasters(month?: string): Promise<an
               p.reversed_at,
               p.reversed_by,
               p.reversal_reason,
+              p.is_advance,
               p.created_at
             FROM payouts p
             WHERE p.user_id = me.user_id AND p.month = $1
@@ -1672,7 +1681,8 @@ export async function getMonthlyReportsForAllMasters(month?: string): Promise<an
           me.scrubbing,
           me.zaparnik,
           me.earnings,
-          LEAST(COALESCE(mp.raw_total_payouts, 0), me.earnings) as total_payouts,
+          me.earnings,
+          COALESCE(mp.raw_total_payouts, 0) as total_payouts,
           GREATEST(0, me.earnings - COALESCE(mp.raw_total_payouts, 0)) as remaining,
           CASE 
             WHEN COALESCE(mp.raw_total_payouts, 0) >= me.earnings THEN 'completed'
@@ -1695,7 +1705,8 @@ export async function getMonthlyReportsForAllMasters(month?: string): Promise<an
               'source', payout_row.source,
               'reversed_at', payout_row.reversed_at,
               'reversed_by', payout_row.reversed_by,
-              'reversal_reason', payout_row.reversal_reason
+              'reversal_reason', payout_row.reversal_reason,
+              'is_advance', payout_row.is_advance
             )
             ORDER BY payout_row.date DESC, payout_row.created_at DESC, payout_row.id DESC
           ) as recent_payouts
@@ -1712,6 +1723,7 @@ export async function getMonthlyReportsForAllMasters(month?: string): Promise<an
               p.reversed_at,
               p.reversed_by,
               p.reversal_reason,
+              p.is_advance,
               p.created_at
             FROM payouts p
             WHERE p.user_id = me.user_id AND p.month = me.month

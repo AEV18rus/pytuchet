@@ -44,6 +44,8 @@ interface MonthData {
   payouts: Payout[];
   remaining: number;
   total_payouts: number;
+  total_payouts_real: number;
+  advance_amount: number;
   progress: number;
   status: string;
 }
@@ -287,6 +289,15 @@ export default function PayoutsPage() {
     }
   };
 
+  const getNextMonthName = (monthStr: string) => {
+    const [year, month] = monthStr.split('-').map(Number);
+    const nextDate = new Date(year, month, 1); // month уже +1 из-за индексации с 0
+    return nextDate.toLocaleDateString('ru-RU', {
+      month: 'long',
+      year: 'numeric'
+    });
+  };
+
   const getStatusColor = (remaining: number) => {
     if (remaining <= 0) return 'green';
     if (remaining < 5000) return 'orange';
@@ -486,6 +497,12 @@ export default function PayoutsPage() {
                       <span className="earnings-label">Выплачено:</span>
                       <span className="earnings-value paid">{(monthData.total_payouts || 0).toLocaleString()} ₽</span>
                     </div>
+                    {monthData.advance_amount > 0 && (
+                      <div className="earnings-simple">
+                        <span className="earnings-label">Аванс:</span>
+                        <span className="earnings-value advance">{monthData.advance_amount.toLocaleString()} ₽</span>
+                      </div>
+                    )}
                     <div className="earnings-simple">
                       <span className="earnings-label">Остаток:</span>
                       <span className="earnings-value remaining">{monthData.remaining.toLocaleString()} ₽</span>
@@ -564,6 +581,19 @@ export default function PayoutsPage() {
                             )}
                           </div>
                         ))}
+
+                        {/* Отображение аванса отдельной строкой */}
+                        {monthData.advance_amount > 0 && (
+                          <div className="history-item history-item--advance">
+                            <div className="history-separator"></div>
+                            <div className="history-info">
+                              <div className="history-amount advance-amount">Аванс: {monthData.advance_amount.toLocaleString()} ₽</div>
+                              <div className="history-details">
+                                Переносится на {getNextMonthName(monthData.month)}
+                              </div>
+                            </div>
+                          </div>
+                        )}
                       </div>
                     </div>
                   )}
@@ -1079,6 +1109,12 @@ export default function PayoutsPage() {
           font-size: 13px;
         }
 
+        .earnings-value.advance {
+          color: #ff9800;
+          font-weight: 600;
+          font-size: 13px;
+        }
+
         .earnings-percentage {
           font-weight: 600;
           color: #333;
@@ -1291,6 +1327,30 @@ export default function PayoutsPage() {
           font-size: 13px;
           color: #b45309;
           margin-top: 4px;
+        }
+
+        .history-item--advance {
+          background: rgba(255, 152, 0, 0.05);
+          border-color: rgba(255, 152, 0, 0.3);
+          flex-direction: column;
+          align-items: stretch;
+        }
+
+        .history-item--advance:hover {
+          background: rgba(255, 152, 0, 0.08);
+        }
+
+        .history-separator {
+          width: 100%;
+          height: 1px;
+          background: linear-gradient(90deg, transparent 0%, rgba(255, 152, 0, 0.3) 50%, transparent 100%);
+          margin-bottom: 12px;
+        }
+
+        .advance-amount {
+          color: #ff9800;
+          font-weight: 700;
+          font-size: 1.1em;
         }
 
         .modal-overlay {

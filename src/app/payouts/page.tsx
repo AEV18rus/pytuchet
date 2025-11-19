@@ -35,6 +35,7 @@ interface Payout {
   source?: string | null;
   reversed_at?: string | null;
   reversal_reason?: string | null;
+  is_advance?: boolean;
 }
 
 interface MonthData {
@@ -87,7 +88,7 @@ export default function PayoutsPage() {
         if (typeof window !== 'undefined' && window.Telegram?.WebApp) {
           const tg = window.Telegram.WebApp;
           tg.ready();
-          
+
           const initData = tg.initDataUnsafe;
           if (initData?.user) {
             // Приводим объект Telegram к форме нашего пользователя
@@ -139,13 +140,13 @@ export default function PayoutsPage() {
 
   const fetchPayouts = useCallback(async () => {
     if (!user) return;
-    
+
     try {
       setIsLoading(true);
       setError(null); // Сбрасываем предыдущие ошибки
-      
+
       console.log('Fetching payouts for user:', user.telegram_id);
-      
+
       // Если по каким-то причинам telegram_id отсутствует (Telegram WebApp), используем id как telegram_id
       const telegramHeader = (user.telegram_id ?? user.id ?? 87654321).toString();
       const response = await fetch('/api/payouts', {
@@ -164,10 +165,10 @@ export default function PayoutsPage() {
 
       const data = await response.json();
       console.log('Received data:', data);
-      
+
       // API возвращает объект с полем months
       const monthsData = data.months || [];
-      
+
       // Фильтруем данные по выбранному году
       const filteredData = monthsData.filter((monthData: MonthData) => {
         // Парсим год из строки формата "YYYY-MM"
@@ -175,7 +176,7 @@ export default function PayoutsPage() {
         return monthYear === selectedYear;
       });
       setMonths(filteredData);
-      
+
       if (filteredData.length === 0) {
         setError(`Нет данных за ${selectedYear} год`);
       }
@@ -257,36 +258,36 @@ export default function PayoutsPage() {
     setExpandedMonths(newExpanded);
   };
 
-const formatMonth = (monthStr: string) => {
-  const date = new Date(monthStr + '-01');
-  return date.toLocaleDateString('ru-RU', { 
-    month: 'long', 
-    year: 'numeric' 
-  });
-};
+  const formatMonth = (monthStr: string) => {
+    const date = new Date(monthStr + '-01');
+    return date.toLocaleDateString('ru-RU', {
+      month: 'long',
+      year: 'numeric'
+    });
+  };
 
-const formatDateTime = (dateString: string) => {
-  const date = new Date(dateString);
-  return date.toLocaleString('ru-RU', {
-    day: '2-digit',
-    month: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit'
-  });
-};
+  const formatDateTime = (dateString: string) => {
+    const date = new Date(dateString);
+    return date.toLocaleString('ru-RU', {
+      day: '2-digit',
+      month: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit'
+    });
+  };
 
-const getInitiatorLabel = (role?: string | null) => {
-  switch (role) {
-    case 'admin':
-      return 'Администратор';
-    case 'system':
-      return 'Система';
-    default:
-      return 'Мастер';
-  }
-};
+  const getInitiatorLabel = (role?: string | null) => {
+    switch (role) {
+      case 'admin':
+        return 'Администратор';
+      case 'system':
+        return 'Система';
+      default:
+        return 'Мастер';
+    }
+  };
 
-const getStatusColor = (remaining: number) => {
+  const getStatusColor = (remaining: number) => {
     if (remaining <= 0) return 'green';
     if (remaining < 5000) return 'orange';
     return 'red';
@@ -378,11 +379,11 @@ const getStatusColor = (remaining: number) => {
         {/* Шапка в стиле главной страницы */}
         <div className="header">
           <div className="header-content">
-            <div className="logo" onClick={() => router.push('/admin')} style={{cursor: 'pointer'}}>
-              <Image 
-                src="/logo.svg" 
-                alt="Логотип" 
-                width={120} 
+            <div className="logo" onClick={() => router.push('/admin')} style={{ cursor: 'pointer' }}>
+              <Image
+                src="/logo.svg"
+                alt="Логотип"
+                width={120}
                 height={120}
                 priority
               />
@@ -396,7 +397,7 @@ const getStatusColor = (remaining: number) => {
         <div className="content">
           {/* Кнопка назад */}
           <div className="back-section">
-            <button 
+            <button
               onClick={() => router.push('/')}
               className="back-button"
             >
@@ -410,8 +411,8 @@ const getStatusColor = (remaining: number) => {
               <label className="year-label">Выбрать год</label>
               {!isManualInput ? (
                 <div className="year-select-container">
-                  <select 
-                    value={selectedYear} 
+                  <select
+                    value={selectedYear}
                     onChange={(e) => handleYearChange(e.target.value)}
                     className="year-select"
                   >
@@ -445,131 +446,132 @@ const getStatusColor = (remaining: number) => {
             </div>
           </div>
 
-        {error && (
-          <div className="error-message">
-            {error}
-          </div>
-        )}
-
-        <div className="months-grid">
-          {months.length === 0 ? (
-            <div className="empty-state">
-              <div className="empty-title">Нет данных за {selectedYear} год</div>
-              <p>Данные о заработке за выбранный год отсутствуют</p>
+          {error && (
+            <div className="error-message">
+              {error}
             </div>
-          ) : (
-            months.map((monthData) => (
-              <div key={monthData.month} className="month-card">
-                <div className="month-header">
-                  <div className="month-icon">
-                    <Image
-                      src="/calendar.svg"
-                      alt="Календарь"
-                      width={24}
-                      height={24}
-                    />
-                  </div>
-                  <h3 className="month-title">{formatMonth(monthData.month)}</h3>
-                  <div className={`status-indicator ${getStatusColor(monthData.remaining)}`}>
-                    {getStatusIcon(monthData.remaining)}
-                  </div>
-                </div>
+          )}
 
-                <div className="earnings-section">
-                  <div className="earnings-row">
-                    <span className="earnings-icon">●</span>
-                    <span className="earnings-label">Заработано:</span>
-                    <span className="earnings-value earned">{monthData.earnings.toLocaleString()} ₽</span>
-                  </div>
-                  <div className="earnings-simple">
-                    <span className="earnings-label">Выплачено:</span>
-                    <span className="earnings-value paid">{(monthData.total_payouts || 0).toLocaleString()} ₽</span>
-                  </div>
-                  <div className="earnings-simple">
-                    <span className="earnings-label">Остаток:</span>
-                    <span className="earnings-value remaining">{monthData.remaining.toLocaleString()} ₽</span>
-                  </div>
-                </div>
-
-                <div className="progress-section">
-                  <div className="progress-bar">
-                    <div 
-                      className="progress-fill"
-                      style={{
-                        width: `${Math.min(100, monthData.progress || 0)}%`
-                      }}
-                    ></div>
-                  </div>
-                  <div className="progress-percentage">
-                    {Math.round(monthData.progress || 0)}%
-                  </div>
-                </div>
-
-
-
-                <div className="card-actions">
-                  <button
-                    onClick={() => {
-                      setModalData(prev => ({ ...prev, month: monthData.month }));
-                      setShowModal(true);
-                    }}
-                    className="btn btn-primary"
-                    disabled={authUser?.role === 'demo'}
-                  >
-                    + Добавить выплату
-                  </button>
-                  {monthData.payouts.length > 0 && (
-                    <button
-                      onClick={() => toggleMonthExpansion(monthData.month)}
-                      className="btn btn-secondary"
-                    >
-                      {expandedMonths.has(monthData.month) ? 'Скрыть историю' : 'Показать историю'}
-                    </button>
-                  )}
-                </div>
-
-                {/* История выплат */}
-                {expandedMonths.has(monthData.month) && monthData.payouts.length > 0 && (
-                  <div className="history-section">
-                    <h4 className="history-title">История выплат:</h4>
-                    <div className="history-list">
-                      {monthData.payouts.map((payout) => (
-                        <div 
-                          key={payout.id} 
-                          className={`history-item ${payout.reversed_at ? 'history-item--reversed' : ''}`}
-                        >
-                          <div className="history-info">
-                            <div className="history-amount">{payout.amount.toLocaleString()} ₽</div>
-                            <div className="history-details">
-                              {new Date(payout.date).toLocaleDateString('ru-RU')} · {getInitiatorLabel(payout.initiator_role)}
-                              {payout.comment && ` • ${payout.comment}`}
-                            </div>
-                            {payout.reversed_at && (
-                              <div className="history-reversed-note">
-                                Отменено {formatDateTime(payout.reversed_at)}
-                                {payout.reversal_reason && ` • ${payout.reversal_reason}`}
-                              </div>
-                            )}
-                          </div>
-                          {!payout.reversed_at && (
-                            <button
-                              onClick={() => handleDeletePayout(payout.id)}
-                              className="btn btn-danger btn-small"
-                              disabled={authUser?.role === 'demo'}
-                            >
-                              Удалить
-                            </button>
-                          )}
-                        </div>
-                      ))}
+          <div className="months-grid">
+            {months.length === 0 ? (
+              <div className="empty-state">
+                <div className="empty-title">Нет данных за {selectedYear} год</div>
+                <p>Данные о заработке за выбранный год отсутствуют</p>
+              </div>
+            ) : (
+              months.map((monthData) => (
+                <div key={monthData.month} className="month-card">
+                  <div className="month-header">
+                    <div className="month-icon">
+                      <Image
+                        src="/calendar.svg"
+                        alt="Календарь"
+                        width={24}
+                        height={24}
+                      />
+                    </div>
+                    <h3 className="month-title">{formatMonth(monthData.month)}</h3>
+                    <div className={`status-indicator ${getStatusColor(monthData.remaining)}`}>
+                      {getStatusIcon(monthData.remaining)}
                     </div>
                   </div>
-                )}
-              </div>
-            ))
-          )}
+
+                  <div className="earnings-section">
+                    <div className="earnings-row">
+                      <span className="earnings-icon">●</span>
+                      <span className="earnings-label">Заработано:</span>
+                      <span className="earnings-value earned">{monthData.earnings.toLocaleString()} ₽</span>
+                    </div>
+                    <div className="earnings-simple">
+                      <span className="earnings-label">Выплачено:</span>
+                      <span className="earnings-value paid">{(monthData.total_payouts || 0).toLocaleString()} ₽</span>
+                    </div>
+                    <div className="earnings-simple">
+                      <span className="earnings-label">Остаток:</span>
+                      <span className="earnings-value remaining">{monthData.remaining.toLocaleString()} ₽</span>
+                    </div>
+                  </div>
+
+                  <div className="progress-section">
+                    <div className="progress-bar">
+                      <div
+                        className="progress-fill"
+                        style={{
+                          width: `${Math.min(100, monthData.progress || 0)}%`
+                        }}
+                      ></div>
+                    </div>
+                    <div className="progress-percentage">
+                      {Math.round(monthData.progress || 0)}%
+                    </div>
+                  </div>
+
+
+
+                  <div className="card-actions">
+                    <button
+                      onClick={() => {
+                        setModalData(prev => ({ ...prev, month: monthData.month }));
+                        setShowModal(true);
+                      }}
+                      className="btn btn-primary"
+                      disabled={authUser?.role === 'demo'}
+                    >
+                      + Добавить выплату
+                    </button>
+                    {monthData.payouts.length > 0 && (
+                      <button
+                        onClick={() => toggleMonthExpansion(monthData.month)}
+                        className="btn btn-secondary"
+                      >
+                        {expandedMonths.has(monthData.month) ? 'Скрыть историю' : 'Показать историю'}
+                      </button>
+                    )}
+                  </div>
+
+                  {/* История выплат */}
+                  {expandedMonths.has(monthData.month) && monthData.payouts.length > 0 && (
+                    <div className="history-section">
+                      <h4 className="history-title">История выплат:</h4>
+                      <div className="history-list">
+                        {monthData.payouts.map((payout) => (
+                          <div
+                            key={payout.id}
+                            className={`history-item ${payout.reversed_at ? 'history-item--reversed' : ''}`}
+                          >
+                            <div className="history-info">
+                              <div className="history-amount">{payout.amount.toLocaleString()} ₽</div>
+                              <div className="history-details">
+                                {new Date(payout.date).toLocaleDateString('ru-RU')} · {getInitiatorLabel(payout.initiator_role)}
+                                {payout.is_advance && <span className="advance-badge">АВАНС</span>}
+                                {payout.comment && ` • ${payout.comment}`}
+                              </div>
+                              {payout.reversed_at && (
+                                <div className="history-reversed-note">
+                                  Отменено {formatDateTime(payout.reversed_at)}
+                                  {payout.reversal_reason && ` • ${payout.reversal_reason}`}
+                                </div>
+                              )}
+                            </div>
+                            {!payout.reversed_at && (
+                              <button
+                                onClick={() => handleDeletePayout(payout.id)}
+                                className="btn btn-danger btn-small"
+                                disabled={authUser?.role === 'demo'}
+                              >
+                                Удалить
+                              </button>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              ))
+            )}
+          </div>
         </div>
-      </div>
 
         {/* Модальное окно для добавления выплаты */}
         {showModal && (
@@ -1521,6 +1523,19 @@ const getStatusColor = (remaining: number) => {
             font-size: 8px;
             width: 12px;
           }
+        }
+
+        .advance-badge {
+          display: inline-block;
+          background-color: #ff9800;
+          color: white;
+          font-size: 10px;
+          font-weight: bold;
+          padding: 2px 6px;
+          border-radius: 4px;
+          margin-left: 6px;
+          vertical-align: middle;
+          text-transform: uppercase;
         }
       `}</style>
     </div>

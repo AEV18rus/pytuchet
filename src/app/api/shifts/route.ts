@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getShifts, addShift, getPrices, getShiftsForUserAndMonth, getMonthStatus } from '@/lib/db';
+import { getShifts, addShift, getPrices, getShiftsForUserAndMonth, getMonthStatus, recalculateAdvancesForMonth, autoCloseFinishedMonths } from '@/lib/db';
 import { requireAuth, requireMasterForMutation } from '@/lib/auth-server';
 
 export async function GET(request: NextRequest) {
@@ -94,7 +94,21 @@ export async function POST(request: NextRequest) {
 
     await addShift(shiftData);
 
-    return NextResponse.json({ 
+    // Пересчитываем авансы для месяца, в который добавлена смена
+    try {
+      const month = (typeof date === 'string' && date.length >= 7) ? date.slice(0, 7) : '';
+      if (month) {
+        await recalculateAdvancesForMonth(user.id, month);
+      }
+
+      // Запускаем проверку автоматического закрытия месяцев (в фоновом режиме)
+      autoCloseFinishedMonths().catch(err => console.error('Ошибка в фоновой задаче автозакрытия:', err));
+    } catch (e) {
+      console.error('Ошибка при пересчете авансов:', e);
+      // Не прерываем ответ клиенту, так как смена уже добавлена
+    }
+
+    return NextResponse.json({
       message: 'Смена добавлена успешно',
       shift: { date, hours, masters, total, services: services || {} }
     });

@@ -35,7 +35,7 @@ if (!useVercelPostgres) {
   // Явно загружаем .env.local для локальной разработки
   try {
     dotenv.config({ path: '.env.local' });
-  } catch {}
+  } catch { }
   const connectionString = process.env.DATABASE_URL || process.env.POSTGRES_URL;
   if (connectionString) {
     localPool = new Pool({ connectionString });
@@ -64,7 +64,7 @@ async function executeSimpleQuery(query: string) {
 }
 
 // Функция для выполнения SQL запросов с параметрами
-async function executeQuery(query: string, params?: any[]) {
+export async function executeQuery(query: string, params?: any[]) {
   if (useVercelPostgres) {
     // Используем Vercel Postgres sql template literal для лучшей производительности
     try {
@@ -158,6 +158,7 @@ export interface Payout {
   reversed_at?: string | null;
   reversed_by?: number | null;
   reversal_reason?: string | null;
+  is_advance?: boolean; // Помечает выплату как аванс (месяц не закрыт)
   created_at?: string;
 }
 
@@ -286,7 +287,8 @@ async function initPostgres() {
       ADD COLUMN IF NOT EXISTS source TEXT,
       ADD COLUMN IF NOT EXISTS reversed_at TIMESTAMP,
       ADD COLUMN IF NOT EXISTS reversed_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
-      ADD COLUMN IF NOT EXISTS reversal_reason TEXT
+      ADD COLUMN IF NOT EXISTS reversal_reason TEXT,
+      ADD COLUMN IF NOT EXISTS is_advance BOOLEAN DEFAULT FALSE
     `);
 
     // Статус месяца (закрыт/открыт)
@@ -671,7 +673,7 @@ export async function initDatabase(): Promise<void> {
 
   // Создаем промис инициализации
   initPromise = performDatabaseInit();
-  
+
   try {
     await initPromise;
     isDbInitialized = true;
@@ -687,7 +689,7 @@ async function performDatabaseInit(): Promise<void> {
     if (useVercelPostgres) {
       // Для Vercel Postgres используем sql.query для лучшей производительности
       console.log('Initializing Vercel Postgres database...');
-      
+
       // Создание таблицы пользователей
       await sql.query(`
         CREATE TABLE IF NOT EXISTS users (
@@ -726,7 +728,7 @@ async function performDatabaseInit(): Promise<void> {
       await sql.query(`
         CREATE UNIQUE INDEX IF NOT EXISTS idx_users_browser_login ON users(browser_login)
       `);
-      
+
       // Создание таблицы shifts
       await sql.query(`
         CREATE TABLE IF NOT EXISTS shifts (
@@ -875,13 +877,13 @@ export async function cleanupUsersExceptTest(): Promise<void> {
       'DELETE FROM shifts WHERE user_id NOT IN (SELECT id FROM users WHERE first_name = $1)',
       ['User Test']
     );
-    
+
     // Затем удаляем всех пользователей, кроме User Test
     await executeQuery(
       'DELETE FROM users WHERE first_name != $1',
       ['User Test']
     );
-    
+
     console.log('Users cleanup completed successfully');
   } catch (error) {
     console.error('Error during users cleanup:', error);
@@ -905,8 +907,9 @@ export async function createPayout(payout: Omit<Payout, 'id' | 'created_at'>): P
         source, 
         reversed_at,
         reversed_by,
-        reversal_reason
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12) RETURNING *`,
+        reversal_reason,
+        is_advance
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13) RETURNING *`,
       [
         payout.user_id,
         payout.month,
@@ -919,7 +922,8 @@ export async function createPayout(payout: Omit<Payout, 'id' | 'created_at'>): P
         payout.source ?? null,
         payout.reversed_at ?? null,
         payout.reversed_by ?? null,
-        payout.reversal_reason ?? null
+        payout.reversal_reason ?? null,
+        payout.is_advance ?? false
       ]
     );
     return result.rows[0] as Payout;
@@ -929,44 +933,83 @@ export async function createPayout(payout: Omit<Payout, 'id' | 'created_at'>): P
   }
 }
 
-// Новая функция для создания выплат с корректировкой сумм
+// Новая функция для создания выплат с корректировкой сумм и поддержкой авансов
 export async function createPayoutWithCorrection(payout: Omit<Payout, 'id' | 'created_at'>): Promise<{ payout: Payout; overpayment?: number }> {
   try {
     // Получаем заработок за месяц
     const monthlyEarnings = await getEarningsForMonth(payout.user_id, payout.month);
-    
+
     // Получаем уже существующие выплаты за месяц
     const existingPayouts = await getPayoutsForMonth(payout.user_id, payout.month);
-    
+
     // Вычисляем оставшуюся сумму для выплат
     const remainingEarnings = monthlyEarnings - existingPayouts;
-    
-    // Определяем сумму для записи в базу
-    let actualAmount = payout.amount;
-    let overpayment = 0;
-    
+
+    // Проверяем, закрыт ли месяц
+    const isClosed = await isMonthClosed(payout.month);
+
+    // Если выплата превышает оставшийся заработок
     if (payout.amount > remainingEarnings) {
-      // Если выплата превышает оставшийся заработок
-      actualAmount = Math.max(0, remainingEarnings);
-      overpayment = payout.amount - actualAmount;
+      if (!isClosed) {
+        // СЦЕНАРИЙ: АВАНС (месяц не закрыт)
+        // Создаем выплату на полную сумму, помечаем как аванс
+        console.log(`Создание аванса для ${payout.user_id} в ${payout.month}: ${payout.amount} ₽ (заработок ${monthlyEarnings} ₽, выплачено ${existingPayouts} ₽)`);
+
+        const advancePayout = {
+          ...payout,
+          is_advance: true
+        };
+
+        const createdPayout = await createPayout(advancePayout);
+
+        return {
+          payout: createdPayout,
+          overpayment: 0 // Технически переплаты нет, это аванс
+        };
+      } else {
+        // СЦЕНАРИЙ: ПЕРЕПЛАТА (месяц закрыт)
+        // Старая логика: разбиваем на выплату и перенос
+        const actualAmount = Math.max(0, remainingEarnings);
+        const overpayment = payout.amount - actualAmount;
+
+        console.log(`Создание переплаты для ${payout.user_id} в ${payout.month}: выплата ${actualAmount} ₽, перенос ${overpayment} ₽`);
+
+        // Создаем выплату с скорректированной суммой (если она > 0)
+        let createdPayout: Payout;
+
+        if (actualAmount > 0) {
+          createdPayout = await createPayout({
+            ...payout,
+            amount: actualAmount,
+            is_advance: false
+          });
+        } else {
+          // Если вся сумма уходит в перенос, создаем фиктивную запись для возврата (или берем первую часть переноса)
+          // В данном случае лучше вернуть структуру, похожую на выплату
+          createdPayout = { ...payout, amount: 0, id: 0 } as Payout;
+        }
+
+        // Создаем перенос на следующий месяц
+        if (overpayment > 0) {
+          await createCarryoverForOverpayment(payout, overpayment);
+        }
+
+        return {
+          payout: createdPayout,
+          overpayment: overpayment
+        };
+      }
     }
-    
-    // Создаем выплату с скорректированной суммой
-    const correctedPayout = {
+
+    // СЦЕНАРИЙ: ОБЫЧНАЯ ВЫПЛАТА (хватает заработка)
+    const createdPayout = await createPayout({
       ...payout,
-      amount: actualAmount
-    };
-    
-    const createdPayout = await createPayout(correctedPayout);
-    
-    // Если есть переплата, создаем перенос на следующий месяц
-    if (overpayment > 0) {
-      await createCarryoverForOverpayment(payout, overpayment);
-    }
-    
-    return { 
-      payout: createdPayout, 
-      overpayment: overpayment > 0 ? overpayment : undefined 
+      is_advance: false
+    });
+
+    return {
+      payout: createdPayout,
+      overpayment: undefined
     };
   } catch (error) {
     console.error('Ошибка при создании выплаты с корректировкой:', error);
@@ -984,7 +1027,7 @@ async function createCarryoverForOverpayment(
     const [year, monthNumber] = originalPayout.month.split('-').map(Number);
     const nextDate = new Date(year, monthNumber, 1); // monthNumber уже 1-индексирован
     const nextMonth = `${nextDate.getFullYear()}-${String(nextDate.getMonth() + 1).padStart(2, '0')}`;
-    
+
     // Создаем комментарий для переноса
     const monthNames = [
       'января', 'февраля', 'марта', 'апреля', 'мая', 'июня',
@@ -993,7 +1036,7 @@ async function createCarryoverForOverpayment(
     const fromMonthName = monthNames[monthNumber - 1];
     const fromYear = year;
     const comment = `Перенос с ${fromMonthName} ${fromYear}`;
-    
+
     // Создаем выплату-перенос в следующем месяце
     await createPayoutWithCorrection({
       user_id: originalPayout.user_id,
@@ -1207,6 +1250,194 @@ export async function getPayoutsForMonth(userId: number, month: string): Promise
   }
 }
 
+// --- Функции для работы с авансами ---
+
+/**
+ * Проверяет, закончился ли месяц (по календарю или вручную закрыт)
+ * @param month - месяц в формате YYYY-MM
+ * @returns true если месяц закончился или закрыт вручную
+ */
+export async function isMonthClosed(month: string): Promise<boolean> {
+  try {
+    // Проверяем статус вручную закрытого месяца
+    const manualStatus = await getMonthStatus(month);
+    if (manualStatus) {
+      return true;
+    }
+
+    // Проверяем по календарю: месяц закончился?
+    const [year, monthNum] = month.split('-').map(Number);
+    const lastDayOfMonth = new Date(year, monthNum, 0); // 0 = последний день предыдущего месяца
+    const today = new Date();
+
+    // Устанавливаем время на начало дня для корректного сравнения
+    today.setHours(0, 0, 0, 0);
+    lastDayOfMonth.setHours(23, 59, 59, 999);
+
+    return today > lastDayOfMonth;
+  } catch (error) {
+    console.error('Ошибка при проверке закрытия месяца:', error);
+    throw error;
+  }
+}
+
+/**
+ * Пересчитывает авансы после добавления/изменения смен в месяце
+ * Обновляет статус выплат: если заработок покрыл аванс, убирает флаг is_advance
+ * @param userId - ID пользователя
+ * @param month - месяц в формате YYYY-MM
+ */
+export async function recalculateAdvancesForMonth(userId: number, month: string): Promise<void> {
+  try {
+    // Получаем текущий заработок за месяц
+    const earnings = await getEarningsForMonth(userId, month);
+
+    // Получаем все авансы в этом месяце
+    const result = await executeQuery(
+      `SELECT id, amount FROM payouts 
+       WHERE user_id = $1 AND month = $2 AND is_advance = TRUE AND reversed_at IS NULL
+       ORDER BY created_at ASC`,
+      [userId, month]
+    );
+
+    if (result.rows.length === 0) {
+      return; // Нет авансов для пересчёта
+    }
+
+    let accumulatedPayouts = 0;
+
+    for (const advance of result.rows as Payout[]) {
+      accumulatedPayouts += advance.amount!;
+
+      // Если заработок покрывает этот аванс
+      if (earnings >= accumulatedPayouts) {
+        // Убираем флаг аванса
+        await executeQuery(
+          `UPDATE payouts SET is_advance = FALSE WHERE id = $1`,
+          [advance.id]
+        );
+        console.log(`Аванс ${advance.id} покрыт заработком. Сумма: ${advance.amount} ₽`);
+      }
+    }
+
+    console.log(`Пересчёт авансов для месяца ${month} завершён. Заработок: ${earnings} ₽`);
+  } catch (error) {
+    console.error('Ошибка при пересчёте авансов:', error);
+    throw error;
+  }
+}
+
+/**
+ * Автоматически закрывает месяцы, которые уже завершились по календарю
+ * Обрабатывает авансы, превращая их в переносы
+ */
+export async function autoCloseFinishedMonths(): Promise<void> {
+  try {
+    // Получаем все месяцы со сменами
+    const result = await executeQuery(
+      `SELECT DISTINCT TO_CHAR(TO_DATE(date, 'YYYY-MM-DD'), 'YYYY-MM') as month, user_id
+       FROM shifts
+       ORDER BY month ASC`
+    );
+
+    const monthsToCheck = result.rows as { month: string; user_id: number }[];
+
+    for (const { month, user_id } of monthsToCheck) {
+      // Проверяем, закончился ли месяц по календарю
+      const [year, monthNum] = month.split('-').map(Number);
+      const lastDayOfMonth = new Date(year, monthNum, 0);
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      lastDayOfMonth.setHours(23, 59, 59, 999);
+
+      if (today > lastDayOfMonth) {
+        // Месяц закончился, проверяем не закрыт ли он уже
+        const isClosed = await getMonthStatus(month);
+
+        if (!isClosed) {
+          console.log(`Автоматическое закрытие месяца ${month} для пользователя ${user_id}`);
+
+          // Обрабатываем авансы перед закрытием
+          await processMonthClosure(user_id, month);
+
+          // Закрываем месяц
+          await setMonthClosed(month, true);
+        }
+      }
+    }
+  } catch (error) {
+    console.error('Ошибка при автоматическом закрытии месяцев:', error);
+    throw error;
+  }
+}
+
+/**
+ * Обрабатывает авансы при закрытии месяца
+ * Превращает авансы в переносы на следующий месяц
+ * @param userId - ID пользователя
+ * @param month - закрываемый месяц в формате YYYY-MM
+ */
+export async function processMonthClosure(userId: number, month: string): Promise<void> {
+  try {
+    const earnings = await getEarningsForMonth(userId, month);
+    const totalPayouts = await getPayoutsForMonth(userId, month);
+
+    // Проверяем, есть ли переплата
+    if (totalPayouts <= earnings) {
+      console.log(`Месяц ${month}: переплаты нет (${totalPayouts} ₽ <= ${earnings} ₽)`);
+      return;
+    }
+
+    const overpayment = totalPayouts - earnings;
+    console.log(`Месяц ${month}: переплата ${overpayment} ₽, создаём перенос на следующий месяц`);
+
+    // Вычисляем следующий месяц
+    const [year, monthNumber] = month.split('-').map(Number);
+    const nextDate = new Date(year, monthNumber, 1); // monthNumber уже 1-индексирован
+    const nextMonth = `${nextDate.getFullYear()}-${String(nextDate.getMonth() + 1).padStart(2, '0')}`;
+
+    // Создаем комментарий для переноса
+    const monthNames = [
+      'января', 'февраля', 'марта', 'апреля', 'мая', 'июня',
+      'июля', 'августа', 'сентября', 'октября', 'ноября', 'декабря'
+    ];
+    const fromMonthName = monthNames[monthNumber - 1];
+    const comment = `Перенос с ${fromMonthName} ${year}`;
+
+    // Получаем последнюю дату месяца для даты переноса
+    const lastDay = new Date(year, monthNumber, 0);
+    const payoutDate = `${year}-${String(monthNumber).padStart(2, '0')}-${String(lastDay.getDate()).padStart(2, '0')}`;
+
+    // Создаём выплату-перенос в следующем месяце
+    await createPayout({
+      user_id: userId,
+      month: nextMonth,
+      amount: overpayment,
+      date: payoutDate,
+      comment: comment,
+      initiated_by: null,
+      initiator_role: 'system',
+      method: 'carryover',
+      source: 'carryover',
+      reversed_at: null,
+      is_advance: false // Перенос не является авансом
+    });
+
+    // Помечаем все авансы текущего месяца как закрытые (снимаем флаг is_advance)
+    await executeQuery(
+      `UPDATE payouts SET is_advance = FALSE 
+       WHERE user_id = $1 AND month = $2 AND is_advance = TRUE`,
+      [userId, month]
+    );
+
+    console.log(`Создан перенос: ${overpayment} ₽ в месяц ${nextMonth}`);
+  } catch (error) {
+    console.error('Ошибка при обработке закрытия месяца:', error);
+    throw error;
+  }
+}
+
+
 // Итоги за месяц по всем пользователям (заработано по сменам, выплачено, остаток)
 export async function getMonthTotals(month: string): Promise<{ earned: number; paid: number; remaining: number }> {
   try {
@@ -1395,7 +1626,7 @@ export async function getMonthlyReportsForAllMasters(month?: string): Promise<an
         ) rp ON true
         ORDER BY me.earnings DESC
       `;
-      
+
       const result = await executeQuery(query, [month]);
       return result.rows;
     } else {
@@ -1490,7 +1721,7 @@ export async function getMonthlyReportsForAllMasters(month?: string): Promise<an
         ) rp ON true
         ORDER BY me.month DESC, me.earnings DESC
       `;
-      
+
       const result = await executeQuery(query, []);
       return result.rows;
     }
@@ -1549,7 +1780,7 @@ export async function createCarryoverPayout(carryover: Omit<Carryover, 'id' | 'c
       'января', 'февраля', 'марта', 'апреля', 'мая', 'июня',
       'июля', 'августа', 'сентября', 'октября', 'ноября', 'декабря'
     ];
-    
+
     const [year, month] = carryover.from_month.split('-');
     const monthIndex = parseInt(month) - 1;
     const monthName = monthNames[monthIndex];
@@ -1633,51 +1864,51 @@ export async function processOverpaymentCarryover(userId: number, month: string,
 
 // Оптимизированная функция для обработки каскадных переносов
 async function processOverpaymentCarryoverOptimized(
-  userId: number, 
-  startMonth: string, 
+  userId: number,
+  startMonth: string,
   payoutDate: string
 ): Promise<void> {
   let currentMonth = startMonth;
   let remainingOverpayment = 0;
   const maxIterations = 12; // Максимум 12 месяцев для предотвращения бесконечного цикла
   let iteration = 0;
-  
+
   // Сначала вычисляем начальную переплату
   const initialEarnings = await getEarningsForMonth(userId, currentMonth);
   const initialPayouts = await getPayoutsForMonth(userId, currentMonth);
-  
+
   if (initialPayouts <= initialEarnings) {
     console.log(`Месяц ${currentMonth}: переплаты нет (${initialPayouts} ₽ <= ${initialEarnings} ₽)`);
     return;
   }
-  
+
   remainingOverpayment = initialPayouts - initialEarnings;
   console.log(`Начальная переплата в ${currentMonth}: ${remainingOverpayment} ₽`);
-  
+
   // Создаем массив переносов для batch-обработки
   const carryoversToCreate = [];
-  
+
   while (remainingOverpayment > 0 && iteration < maxIterations) {
     iteration++;
     const nextMonth = getNextMonth(currentMonth);
-    
+
     // Получаем заработок следующего месяца
     const nextMonthEarnings = await getEarningsForMonth(userId, nextMonth);
-    
+
     console.log(`Месяц ${nextMonth}: заработок ${nextMonthEarnings} ₽, нужно перенести ${remainingOverpayment} ₽`);
-    
+
     // Создаем комментарий для переноса
     const monthNames = [
       'январь', 'февраль', 'март', 'апрель', 'май', 'июнь',
       'июль', 'август', 'сентябрь', 'октябрь', 'ноябрь', 'декабрь'
     ];
-    
+
     const [currentYear, currentMonthNum] = currentMonth.split('-');
     const currentMonthIndex = parseInt(currentMonthNum) - 1;
     const currentMonthName = monthNames[currentMonthIndex];
-    
+
     const carryoverComment = `Перенос с ${currentMonthName} ${currentYear}`;
-    
+
     // Добавляем перенос в список для создания
     carryoversToCreate.push({
       user_id: userId,
@@ -1691,7 +1922,7 @@ async function processOverpaymentCarryoverOptimized(
       source: 'carryover',
       reversed_at: null
     });
-    
+
     // Если заработок следующего месяца покрывает всю переплату
     if (nextMonthEarnings >= remainingOverpayment) {
       console.log(`Переплата ${remainingOverpayment} ₽ полностью покрывается заработком ${nextMonthEarnings} ₽ в ${nextMonth}`);
@@ -1703,13 +1934,13 @@ async function processOverpaymentCarryoverOptimized(
       currentMonth = nextMonth;
     }
   }
-  
+
   // Создаем все переносы
   for (const carryover of carryoversToCreate) {
     await createPayout(carryover);
     console.log(`Создан перенос: ${carryover.amount} ₽ в ${carryover.month}`);
   }
-  
+
   if (iteration >= maxIterations) {
     console.warn(`Достигнуто максимальное количество итераций (${maxIterations}) при обработке переносов`);
   }

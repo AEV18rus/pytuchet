@@ -9,6 +9,7 @@ export type Payment = {
   amount: number;
   comment?: string;
   isAdmin?: boolean;
+  isAdvance?: boolean;
 };
 
 interface PaymentsListProps {
@@ -30,6 +31,7 @@ export function PaymentsList({ payments, onDelete }: PaymentsListProps) {
             <div className="payment-amount">
               {formatCurrency(payment.amount)}
               {payment.isAdmin && <span className="payment-admin-dot">•</span>}
+              {payment.isAdvance && <span className="payment-advance-badge">АВАНС</span>}
             </div>
             <button
               type="button"
@@ -83,6 +85,18 @@ export function PaymentsList({ payments, onDelete }: PaymentsListProps) {
         .payment-admin-dot {
           margin-left: 6px;
           color: rgba(44, 26, 15, 0.6);
+        }
+        .payment-advance-badge {
+          display: inline-block;
+          background-color: #ff9800;
+          color: white;
+          font-size: 9px;
+          font-weight: bold;
+          padding: 1px 4px;
+          border-radius: 3px;
+          margin-left: 6px;
+          vertical-align: middle;
+          text-transform: uppercase;
         }
         .payment-delete {
           margin-left: auto;

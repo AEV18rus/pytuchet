@@ -21,6 +21,7 @@ interface PayoutHistoryEntry {
   source?: string | null;
   reversed_at?: string | null;
   reversal_reason?: string | null;
+  is_advance?: boolean;
 }
 
 interface Employee {
@@ -96,7 +97,7 @@ const formatCurrency = (amount: number): string => {
     minimumFractionDigits: 0,
     maximumFractionDigits: 0,
   }).format(amount);
-  
+
   return formatted.replace(/\u00A0/g, '\u202F');
 };
 
@@ -149,7 +150,7 @@ const getNextMonthString = (monthString: string): string => {
 function ShiftsTable({ shifts }: { shifts: Shift[] }) {
   const { prices } = useServices();
   const servicePrices = prices.filter(price => price.name !== 'Почасовая ставка');
-  
+
   return (
     <div className="shift-card-list">
       {shifts.map((shift) => {
@@ -157,8 +158,8 @@ function ShiftsTable({ shifts }: { shifts: Shift[] }) {
         let servicesData: { [key: string]: number } = {};
         if (shift.services) {
           try {
-            servicesData = typeof shift.services === 'string' 
-              ? JSON.parse(shift.services) 
+            servicesData = typeof shift.services === 'string'
+              ? JSON.parse(shift.services)
               : shift.services;
           } catch (e) {
             console.error('Error parsing services data:', e);
@@ -169,7 +170,7 @@ function ShiftsTable({ shifts }: { shifts: Shift[] }) {
           if (servicesData[serviceName] !== undefined) {
             return servicesData[serviceName];
           }
-          
+
           switch (serviceName) {
             case 'Путевое парение':
               return shift.steamBath || 0;
@@ -226,16 +227,16 @@ function ShiftsTable({ shifts }: { shifts: Shift[] }) {
 }
 
 // Компонент строки сотрудника
-function EmployeeRow({ 
-  employee, 
-  month, 
-  shiftState, 
+function EmployeeRow({
+  employee,
+  month,
+  shiftState,
   onToggle,
   onPayoutCreated,
   onToast,
   onReloadMonth
-}: { 
-  employee: Employee; 
+}: {
+  employee: Employee;
   month: string;
   shiftState: ShiftLoadingState[string];
   onToggle: (employeeId: number, month: string) => void;
@@ -255,12 +256,13 @@ function EmployeeRow({
     amount: payout.amount,
     comment: payout.comment,
     isAdmin: payout.initiator_role === 'admin',
+    isAdvance: payout.is_advance,
   }));
 
   const handleToggle = () => {
     const newExpanded = !expanded;
     setExpanded(newExpanded);
-    
+
     if (newExpanded && !shiftState?.data && !shiftState?.loading) {
       onToggle(employee.id, month);
     }
@@ -376,7 +378,7 @@ function EmployeeRow({
 
   return (
     <>
-      <tr 
+      <tr
         className="employee-row hover:bg-gray-50 transition-colors border-b border-gray-100"
       >
         <td colSpan={2} className="employee-card-wrapper">
@@ -461,7 +463,7 @@ function EmployeeRow({
             {shiftState?.error && (
               <div className="text-center py-4">
                 <div className="text-red-600 mb-2">Ошибка загрузки</div>
-                <button 
+                <button
                   onClick={handleRetry}
                   className="px-3 py-1 bg-blue-500 text-white rounded text-sm hover:bg-blue-600 transition-colors"
                 >
@@ -485,14 +487,14 @@ function EmployeeRow({
 }
 
 // Компонент карточки месяца
-function MonthCard({ 
-  month, 
-  shiftStates, 
+function MonthCard({
+  month,
+  shiftStates,
   onLoadShifts,
   onPayoutCreated,
   onToast,
   onReloadMonth
-}: { 
+}: {
   month: Month;
   shiftStates: ShiftLoadingState;
   onLoadShifts: (employeeId: number, monthStr: string) => void;
@@ -514,7 +516,7 @@ function MonthCard({
     <div className={`form-section mb-8`}>
       {/* Заголовок месяца */}
       <div className="month-card__header">
-        <h2 className="text-2xl font-bold mb-4" style={{color:'var(--primary-color)'}}>
+        <h2 className="text-2xl font-bold mb-4" style={{ color: 'var(--primary-color)' }}>
           {formatMonthName(month.month)}
         </h2>
         <div className="month-card__status">
@@ -544,8 +546,8 @@ function MonthCard({
       </div>
 
       {/* Таблица сотрудников */}
-      <div style={{background:'var(--background-card)', borderRadius:'10px', boxShadow:'0 4px 8px var(--shadow-light)'}}>
-        <table className="shifts-table shifts-table--employees" style={{width:'100%'}}>
+      <div style={{ background: 'var(--background-card)', borderRadius: '10px', boxShadow: '0 4px 8px var(--shadow-light)' }}>
+        <table className="shifts-table shifts-table--employees" style={{ width: '100%' }}>
           <thead>
             <tr>
               <th className="py-4 px-4">Сотрудник</th>
@@ -556,9 +558,9 @@ function MonthCard({
             {month.employees.map((employee) => {
               const employeeKey = `${employee.id}-${month.month}`;
               return (
-                <EmployeeRow 
-                  key={employee.id} 
-                  employee={employee} 
+                <EmployeeRow
+                  key={employee.id}
+                  employee={employee}
                   month={month.month}
                   shiftState={shiftStates[employeeKey]}
                   onToggle={onLoadShifts}
@@ -590,15 +592,15 @@ export default function ReportsPage() {
         return monthData;
       }
 
-      const updatedEmployees = monthData.employees.map((emp) => 
+      const updatedEmployees = monthData.employees.map((emp) =>
         emp.id === payload.employeeId
           ? {
-              ...emp,
-              earned: payload.summary.earnings,
-              paid: payload.summary.totalPaid,
-              outstanding: payload.summary.remaining,
-              recentPayouts: payload.history ?? emp.recentPayouts
-            }
+            ...emp,
+            earned: payload.summary.earnings,
+            paid: payload.summary.totalPaid,
+            outstanding: payload.summary.remaining,
+            recentPayouts: payload.history ?? emp.recentPayouts
+          }
           : emp
       );
 
@@ -633,9 +635,9 @@ export default function ReportsPage() {
       if (!response.ok) {
         throw new Error(`Ошибка загрузки отчетов: ${response.status} ${response.statusText}`);
       }
-      
+
       const data = await response.json();
-      
+
       if (Array.isArray(data)) {
         const typedMonths = data as Month[];
         // Фильтруем месяцы, оставляя только те, где есть сотрудники с заработком
@@ -643,7 +645,7 @@ export default function ReportsPage() {
           const employees = Array.isArray(month.employees) ? month.employees : [];
           return employees.some((emp) => emp.earned > 0);
         });
-        
+
         setMonths(filteredMonths);
       } else {
         setMonths([]);
@@ -684,7 +686,7 @@ export default function ReportsPage() {
   // Загрузка смен для конкретного сотрудника
   const loadShifts = async (employeeId: number, month: string) => {
     const employeeKey = `${employeeId}-${month}`;
-    
+
     setShiftStates(prev => ({
       ...prev,
       [employeeKey]: { loading: true, error: false, data: null }
@@ -697,9 +699,9 @@ export default function ReportsPage() {
       if (!response.ok) {
         throw new Error('Ошибка загрузки смен');
       }
-      
+
       const data = await response.json();
-      
+
       setShiftStates(prev => ({
         ...prev,
         [employeeKey]: { loading: false, error: false, data: data.shifts || [] }
@@ -731,8 +733,8 @@ export default function ReportsPage() {
           </div>
         </div>
         <div className="content">
-          <div style={{textAlign:'center', padding:'40px'}}>
-            <div style={{color:'var(--primary-color)', fontWeight:600}}>Загрузка отчётов...</div>
+          <div style={{ textAlign: 'center', padding: '40px' }}>
+            <div style={{ color: 'var(--primary-color)', fontWeight: 600 }}>Загрузка отчётов...</div>
           </div>
         </div>
       </div>
@@ -753,8 +755,8 @@ export default function ReportsPage() {
           </div>
         </div>
         <div className="content">
-          <div style={{textAlign:'center'}}>
-            <div style={{color:'#dc2626', marginBottom:'16px'}}>Ошибка: {error}</div>
+          <div style={{ textAlign: 'center' }}>
+            <div style={{ color: '#dc2626', marginBottom: '16px' }}>Ошибка: {error}</div>
             <button className="btn" onClick={loadReports}>Повторить загрузку</button>
           </div>
         </div>
@@ -776,7 +778,7 @@ export default function ReportsPage() {
       </div>
       <div className="content">
         <div className="back-section">
-          <button 
+          <button
             onClick={() => router.push('/admin')}
             className="btn btn-secondary"
           >
@@ -789,9 +791,9 @@ export default function ReportsPage() {
             <div className="empty-title">Нет данных для отображения</div>
           </div>
         ) : (
-            months.map((month) => (
-            <MonthCard 
-              key={month.month} 
+          months.map((month) => (
+            <MonthCard
+              key={month.month}
               month={month}
               shiftStates={shiftStates}
               onLoadShifts={loadShifts}
@@ -799,7 +801,7 @@ export default function ReportsPage() {
               onToast={showToast}
               onReloadMonth={reloadMonthData}
             />
-            ))
+          ))
         )}
       </div>
       <ToastContainer toasts={toasts} onDismiss={hideToast} />

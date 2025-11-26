@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getShifts, addShift, getPrices, getShiftsForUserAndMonth, getMonthStatus, recalculateAdvancesForMonth, autoCloseFinishedMonths } from '@/lib/db';
+import { getShifts, addShift, getPrices, getShiftsForUserAndMonth, recalculateAdvancesForMonth, autoCloseFinishedMonths } from '@/lib/db';
 import { requireAuth, requireMasterForMutation } from '@/lib/auth-server';
 
 export async function GET(request: NextRequest) {
@@ -29,18 +29,6 @@ export async function POST(request: NextRequest) {
   try {
     const user = await requireMasterForMutation(request);
     const { date, hours, masters, total, services, service_prices, steam_bath, brand_steam, intro_steam, scrubbing, zaparnik } = await request.json();
-
-    try {
-      const month = (typeof date === 'string' && date.length >= 7) ? date.slice(0, 7) : '';
-      if (month) {
-        const isClosed = await getMonthStatus(month);
-        if (isClosed) {
-          return NextResponse.json({ error: 'Месяц закрыт, добавление смен запрещено' }, { status: 403 });
-        }
-      }
-    } catch (e) {
-      // если формат даты неожиданный, продолжаем без блокировки
-    }
 
     if (!date || hours === undefined || total === undefined) {
       return NextResponse.json({ error: 'Дата, часы и общая сумма обязательны' }, { status: 400 });

@@ -1,12 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { ensureDatabaseInitialized } from '@/lib/global-init';
 import { requireAdmin } from '@/lib/auth-server';
-import { 
-  createPayoutWithCorrection, 
-  getEarningsForMonth, 
-  getPayoutsForMonth, 
+import {
+  createPayoutWithCorrection,
+  getEarningsForMonth,
+  getPayoutsForMonth,
   getUserById,
-  getMonthStatus,
   getPayoutHistoryForUserAndMonth
 } from '@/lib/db';
 
@@ -36,14 +35,6 @@ export async function POST(request: NextRequest) {
     const payoutDate = typeof date === 'string' && date.length > 0
       ? date
       : new Date().toISOString().split('T')[0];
-
-    const isClosed = await getMonthStatus(month);
-    if (isClosed) {
-      return NextResponse.json(
-        { error: 'Месяц закрыт, выплаты запрещены' },
-        { status: 403 }
-      );
-    }
 
     const targetUser = await getUserById(Number(userId));
     if (!targetUser) {

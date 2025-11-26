@@ -6,8 +6,7 @@ import {
   deletePayoutForce,
   getEarningsForMonth,
   getPayoutsForMonth,
-  getPayoutHistoryForUserAndMonth,
-  getMonthStatus
+  getPayoutHistoryForUserAndMonth
 } from '@/lib/db';
 
 type RouteParams = {
@@ -33,14 +32,6 @@ export async function DELETE(request: NextRequest, context: RouteContext) {
     const existing = await getPayoutById(payoutId);
     if (!existing) {
       return NextResponse.json({ error: 'Выплата не найдена' }, { status: 404 });
-    }
-
-    const isClosed = await getMonthStatus(existing.month);
-    if (isClosed) {
-      return NextResponse.json(
-        { error: 'Месяц закрыт, удаление выплат запрещено' },
-        { status: 403 }
-      );
     }
 
     const deleted = await deletePayoutForce(payoutId);

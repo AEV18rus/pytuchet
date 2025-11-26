@@ -1,13 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { 
-  getPayoutsByUser, 
+import {
+  getPayoutsByUser,
   getPayoutsByUserAndMonth,
   getMonthsWithShifts,
   getEarningsForMonth,
   getPayoutsForMonth,
   getUserByTelegramId,
   getPayoutsDataOptimized,
-  getMonthStatus,
   createPayoutWithCorrection
 } from '@/lib/db';
 import { getUserFromRequest, requireMasterForMutation } from '@/lib/auth-server';
@@ -17,7 +16,7 @@ import { ensureDatabaseInitialized } from '@/lib/global-init';
 export async function GET(request: NextRequest) {
   try {
     await ensureDatabaseInitialized();
-    
+
     const user = await getUserFromRequest(request);
     if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
@@ -39,7 +38,7 @@ export async function POST(request: NextRequest) {
     console.log('🔄 Начинаем создание выплаты...');
     await ensureDatabaseInitialized();
     console.log('✅ База данных инициализирована');
-    
+
     // Разрешаем мутации только для мастера (админ/демо запрещены)
     try {
       await requireMasterForMutation(request);
@@ -53,31 +52,21 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-  const body = await request.json();
-  const { month, amount, date, comment } = body;
-  console.log('📝 Данные выплаты:', { month, amount, date, comment });
+    const body = await request.json();
+    const { month, amount, date, comment } = body;
+    console.log('📝 Данные выплаты:', { month, amount, date, comment });
 
     // Валидация
     if (!month || !amount || !date) {
-      return NextResponse.json({ 
-        error: 'Месяц, сумма и дата обязательны' 
+      return NextResponse.json({
+        error: 'Месяц, сумма и дата обязательны'
       }, { status: 400 });
     }
 
     if (amount <= 0) {
-      return NextResponse.json({ 
-        error: 'Сумма должна быть больше 0' 
+      return NextResponse.json({
+        error: 'Сумма должна быть больше 0'
       }, { status: 400 });
-    }
-
-    // Проверка: месяц закрыт?
-    console.log('🔍 Проверяем статус месяца:', month);
-    const isClosed = await getMonthStatus(month);
-    console.log('📅 Статус месяца:', isClosed);
-    if (isClosed) {
-      return NextResponse.json({ 
-        error: 'Месяц закрыт, добавление выплат запрещено' 
-      }, { status: 403 });
     }
 
     // Создаем выплату с корректировкой (учитывает переплаты)

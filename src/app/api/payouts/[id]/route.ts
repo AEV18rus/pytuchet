@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { deletePayout, getPayoutById, getMonthStatus } from '@/lib/db';
+import { deletePayout, getPayoutById } from '@/lib/db';
 import { getUserFromRequest, requireMasterForMutation } from '@/lib/auth-server';
 
 // DELETE /api/payouts/[id] - удалить выплату
@@ -29,24 +29,16 @@ export async function DELETE(
     // Проверяем, существует ли выплата и принадлежит ли пользователю
     const payout = await getPayoutById(payoutId);
     if (!payout || payout.user_id !== user.id) {
-      return NextResponse.json({ 
-        error: 'Выплата не найдена или не принадлежит пользователю' 
+      return NextResponse.json({
+        error: 'Выплата не найдена или не принадлежит пользователю'
       }, { status: 404 });
     }
 
-    // Проверка: месяц закрыт?
-    const isClosed = await getMonthStatus(payout.month);
-    if (isClosed) {
-      return NextResponse.json({ 
-        error: 'Месяц закрыт, удаление выплат запрещено' 
-      }, { status: 403 });
-    }
-
     const success = await deletePayout(payoutId, user.id);
-    
+
     if (!success) {
-      return NextResponse.json({ 
-        error: 'Выплата не найдена или не принадлежит пользователю' 
+      return NextResponse.json({
+        error: 'Выплата не найдена или не принадлежит пользователю'
       }, { status: 404 });
     }
 

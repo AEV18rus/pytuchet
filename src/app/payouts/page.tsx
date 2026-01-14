@@ -74,6 +74,7 @@ export default function PayoutsPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [showModal, setShowModal] = useState(false);
+  const [showHistoryModal, setShowHistoryModal] = useState(false);
   const [modalData, setModalData] = useState({
     amount: '',
     date: '',
@@ -486,13 +487,21 @@ export default function PayoutsPage() {
                 </div>
               )}
             </div>
-            <button
-              onClick={() => setShowModal(true)}
-              className="btn btn-add-payout"
-              disabled={authUser?.role === 'demo'}
-            >
-              + Добавить выплату
-            </button>
+            <div className="button-group">
+              <button
+                onClick={() => setShowModal(true)}
+                className="btn btn-add-payout"
+                disabled={authUser?.role === 'demo'}
+              >
+                + Добавить выплату
+              </button>
+              <button
+                onClick={() => setShowHistoryModal(true)}
+                className="btn btn-secondary"
+              >
+                История выплат
+              </button>
+            </div>
           </div>
 
           {error && (
@@ -554,33 +563,89 @@ export default function PayoutsPage() {
                       {Math.round(monthData.progress || 0)}%
                     </div>
                   </div>
+                </div>
+              ))
+            )}
+          </div>
 
-
-
-                  <div className="card-actions">
-                    <button
-                      onClick={() => setShowModal(true)}
-                      className="btn btn-primary"
-                      disabled={authUser?.role === 'demo'}
-                    >
-                      + Добавить выплату
+          {showModal && (
+            <div className="modal-overlay">
+              <div className="modal-content">
+                <h2 className="modal-title">Добавить выплату</h2>
+                <form onSubmit={handleAddPayout} className="modal-form">
+                  <div className="form-group">
+                    <label className="form-label">Сумма (₽)</label>
+                    <input
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      value={modalData.amount}
+                      onChange={(e) => setModalData(prev => ({ ...prev, amount: e.target.value }))}
+                      className="form-input"
+                      required
+                    />
+                  </div>
+                  <div className="form-group">
+                    <label className="form-label">Дата</label>
+                    <input
+                      type="date"
+                      value={modalData.date}
+                      onChange={(e) => setModalData(prev => ({ ...prev, date: e.target.value }))}
+                      className="form-input"
+                      required
+                    />
+                  </div>
+                  <div className="form-group">
+                    <label className="form-label">Комментарий</label>
+                    <textarea
+                      value={modalData.comment}
+                      onChange={(e) => setModalData(prev => ({ ...prev, comment: e.target.value }))}
+                      className="form-textarea"
+                      rows={3}
+                    />
+                  </div>
+                  <div className="modal-actions">
+                    <button type="submit" className="btn btn-primary" disabled={authUser?.role === 'demo'}>
+                      Добавить
                     </button>
-                    {monthData.payouts.length > 0 && (
-                      <button
-                        onClick={() => toggleMonthExpansion(monthData.month)}
-                        className="btn btn-secondary"
-                      >
-                        {expandedMonths.has(monthData.month) ? 'Скрыть историю' : 'Показать историю'}
-                      </button>
-                    )}
+                    <button
+                      type="button"
+                      onClick={() => setShowModal(false)}
+                      className="btn btn-secondary"
+                    >
+                      Отмена
+                    </button>
+                  </div>
+                </form>
+              </div>
+            </div>
+          )
+          }
+
+          {/* Модальное окно истории выплат */}
+          {
+            showHistoryModal && (
+              <div className="modal-overlay">
+                <div className="modal-content history-modal">
+                  <div className="modal-header">
+                    <h2 className="modal-title">История выплат</h2>
+                    <button
+                      onClick={() => setShowHistoryModal(false)}
+                      className="close-button"
+                    >
+                      ✕
+                    </button>
                   </div>
 
-                  {/* История выплат */}
-                  {expandedMonths.has(monthData.month) && monthData.payouts.length > 0 && (
-                    <div className="history-section">
-                      <h4 className="history-title">История выплат:</h4>
-                      <div className="history-list">
-                        {monthData.payouts.map((payout) => (
+                  <div className="history-list-scroll">
+                    {months.flatMap(m => m.payouts)
+                      .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
+                      .length === 0 ? (
+                      <p className="no-data">Нет истории выплат за этот период</p>
+                    ) : (
+                      months.flatMap(m => m.payouts)
+                        .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
+                        .map((payout) => (
                           <div
                             key={payout.id}
                             className={`history-item ${payout.reversed_at ? 'history-item--reversed' : ''}`}
@@ -602,79 +667,60 @@ export default function PayoutsPage() {
                             {!payout.reversed_at && (
                               <button
                                 onClick={() => handleDeletePayout(payout.id)}
-                                className="btn btn-danger btn-small"
+                                className="delete-btn"
                                 disabled={authUser?.role === 'demo'}
+                                title="Удалить выплату"
                               >
-                                Удалить
+                                <img src="/trash.svg" alt="Удалить" width="28" height="28" />
                               </button>
                             )}
                           </div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
+                        ))
+                    )}
+                  </div>
                 </div>
-              ))
-            )}
-          </div>
+              </div>
+            )
+          }
         </div>
-
-        {/* Модальное окно для добавления выплаты */}
-        {showModal && (
-          <div className="modal-overlay">
-            <div className="modal-content">
-              <h2 className="modal-title">Добавить выплату</h2>
-              <form onSubmit={handleAddPayout} className="modal-form">
-                <div className="form-group">
-                  <label className="form-label">Сумма (₽)</label>
-                  <input
-                    type="number"
-                    step="0.01"
-                    min="0"
-                    value={modalData.amount}
-                    onChange={(e) => setModalData(prev => ({ ...prev, amount: e.target.value }))}
-                    className="form-input"
-                    required
-                  />
-                </div>
-                <div className="form-group">
-                  <label className="form-label">Дата</label>
-                  <input
-                    type="date"
-                    value={modalData.date}
-                    onChange={(e) => setModalData(prev => ({ ...prev, date: e.target.value }))}
-                    className="form-input"
-                    required
-                  />
-                </div>
-                <div className="form-group">
-                  <label className="form-label">Комментарий</label>
-                  <textarea
-                    value={modalData.comment}
-                    onChange={(e) => setModalData(prev => ({ ...prev, comment: e.target.value }))}
-                    className="form-textarea"
-                    rows={3}
-                  />
-                </div>
-                <div className="modal-actions">
-                  <button type="submit" className="btn btn-primary" disabled={authUser?.role === 'demo'}>
-                    Добавить
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setShowModal(false)}
-                    className="btn btn-secondary"
-                  >
-                    Отмена
-                  </button>
-                </div>
-              </form>
-            </div>
-          </div>
-        )}
       </div>
 
       <style jsx>{`
+        .button-group {
+          display: flex;
+          gap: 10px;
+          margin-top: 15px;
+        }
+        
+        .modal-header {
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          margin-bottom: 20px;
+        }
+
+        .close-button {
+          background: none;
+          border: none;
+          font-size: 24px;
+          color: var(--primary-color);
+          cursor: pointer;
+        }
+
+        .history-list-scroll {
+          max-height: 60vh;
+          overflow-y: auto;
+          display: flex;
+          flex-direction: column;
+          gap: 12px;
+        }
+
+        .no-data {
+          text-align: center;
+          color: #666;
+          padding: 20px;
+        }
+
         /* Основные переменные */
         :root {
           --primary-color: #7a3e2d;
@@ -926,20 +972,22 @@ export default function PayoutsPage() {
           padding: 20px;
           border-radius: 12px;
           transition: all 0.3s ease;
+          background: var(--background-card);
+          border: 2px solid var(--border-light);
         }
 
         .global-balance-card.positive {
-          background: linear-gradient(135deg, #dcfce7 0%, #bbf7d0 100%);
-          border: 2px solid #22c55e;
+          background: var(--background-card);
+          border: 2px solid var(--border-light);
         }
 
         .global-balance-card.zero {
-          background: linear-gradient(135deg, #f3f4f6 0%, #e5e7eb 100%);
-          border: 2px solid #9ca3af;
+          background: var(--background-card);
+          border: 2px solid var(--border-light);
         }
 
         .global-balance-card.advance {
-          background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%);
+          background: var(--background-card);
           border: 2px solid #f59e0b;
         }
 
@@ -980,23 +1028,23 @@ export default function PayoutsPage() {
           display: flex;
           justify-content: space-between;
           font-size: 0.95em;
-          color: var(--font-color);
+          color: #666;
         }
 
         .balance-row .earned {
-          color: #16a34a;
+          color: var(--primary-color);
           font-weight: 600;
         }
 
         .balance-row .paid {
-          color: #dc2626;
+          color: #666;
           font-weight: 600;
         }
 
         .balance-warning {
           margin-top: 12px;
           padding: 10px;
-          background: rgba(245, 158, 11, 0.2);
+          background: rgba(245, 158, 11, 0.15);
           border-radius: 8px;
           font-size: 0.9em;
           color: #92400e;
@@ -1361,13 +1409,32 @@ export default function PayoutsPage() {
           border-color: var(--primary-color);
         }
 
-        .btn-danger {
-          background: linear-gradient(135deg, #dc2626, #b91c1c);
-          color: var(--accent-color);
+        .delete-btn {
+          background: transparent;
+          border: none;
+          border-radius: 8px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          cursor: pointer;
+          transition: all 0.2s ease;
+          padding: 8px;
+          width: 56px;
+          height: 56px;
         }
 
-        .btn-danger:hover {
-          background: linear-gradient(135deg, #ef4444, #dc2626);
+        .delete-btn:hover {
+          background: rgba(156, 163, 175, 0.2);
+          transform: scale(1.05);
+        }
+
+        .delete-btn img {
+          opacity: 0.6;
+          transition: opacity 0.2s ease;
+        }
+
+        .delete-btn:hover img {
+          opacity: 0.8;
         }
 
         .btn-small {

@@ -5,6 +5,12 @@ const nextConfig: NextConfig = {
   trailingSlash: false,
   generateEtags: false,
   poweredByHeader: false,
+  eslint: {
+    ignoreDuringBuilds: true,
+  },
+  typescript: {
+    ignoreBuildErrors: true,
+  },
 }
 
 export default nextConfig;

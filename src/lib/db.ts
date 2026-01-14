@@ -2441,7 +2441,7 @@ export async function getReportsWithGlobalBalanceOptimized(targetMonth?: string)
     const users = usersResult.rows;
 
     // 2. Получаем заработок по месяцам для всех пользователей разом
-    let monthlyEarningsQuery = `
+    const monthlyEarningsQuery = `
       SELECT 
         user_id,
         TO_CHAR(DATE_TRUNC('month', date::date), 'YYYY-MM') as month,

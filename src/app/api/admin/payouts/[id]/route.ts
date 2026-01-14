@@ -9,20 +9,15 @@ import {
   getPayoutHistoryForUserAndMonth
 } from '@/lib/db';
 
-type RouteParams = {
-  id: string;
-};
-
-type RouteContext =
-  | { params: RouteParams }
-  | { params: Promise<RouteParams> };
-
-export async function DELETE(request: NextRequest, context: RouteContext) {
+export async function DELETE(
+  request: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
   try {
     await ensureDatabaseInitialized();
     await requireAdmin(request);
 
-    const resolvedParams = await Promise.resolve(context.params);
+    const resolvedParams = await params;
 
     const payoutId = Number(resolvedParams?.id);
     if (Number.isNaN(payoutId)) {

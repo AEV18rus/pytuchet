@@ -53,11 +53,11 @@ export async function getUserFromRequest(request: NextRequest): Promise<Authenti
       return null;
     }
     const user = await getUserByTelegramId(parseInt(telegramId));
-    
+
     if (!user) {
       return null;
     }
-    
+
     return {
       id: user.id!,
       telegram_id: user.telegram_id,
@@ -96,9 +96,7 @@ export async function requireAdmin(request: NextRequest): Promise<AuthenticatedU
 // Разрешить только мастеру выполнять мутации (шаблон для смен/выплат)
 export async function requireMasterForMutation(request: NextRequest): Promise<AuthenticatedUser> {
   const user = await requireAuth(request);
-  if (user.role === 'admin') {
-    throw new Error('Forbidden'); // Админ не может изменять смены/выплаты
-  }
+
   if (user.role === 'demo') {
     throw new Error('Forbidden'); // Демо только просмотр
   }
@@ -107,7 +105,7 @@ export async function requireMasterForMutation(request: NextRequest): Promise<Au
 }
 
 // Универсальный запрет для ролей (можно использовать для любых мутаций)
-export async function forbidRoles(request: NextRequest, roles: Array<'admin'|'demo'>): Promise<AuthenticatedUser> {
+export async function forbidRoles(request: NextRequest, roles: Array<'admin' | 'demo'>): Promise<AuthenticatedUser> {
   const user = await requireAuth(request);
   if (roles.includes((user.role ?? 'master') as any)) {
     throw new Error('Forbidden');

@@ -1,18 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
 import {
-  getPayoutsByUser,
-  getPayoutsByUserAndMonth,
-  getMonthsWithShifts,
-  getEarningsForMonth,
-  getPayoutsForMonth,
-  getUserByTelegramId,
-  getPayoutsDataOptimized,
-  createPayoutWithCorrection
+  getPayoutsDataWithGlobalBalance,
+  createSimplePayout,
+  getUserBalance
 } from '@/lib/db';
 import { getUserFromRequest, requireMasterForMutation } from '@/lib/auth-server';
 import { ensureDatabaseInitialized } from '@/lib/global-init';
 
-// GET /api/payouts - получить все выплаты пользователя с данными по месяцам
+// GET /api/payouts - получить все выплаты пользователя с глобальным балансом
 export async function GET(request: NextRequest) {
   try {
     await ensureDatabaseInitialized();
@@ -22,17 +17,22 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    // Используем оптимизированную функцию для получения всех данных одним запросом
-    const monthsData = await getPayoutsDataOptimized(user.id!);
+    // Используем новую функцию с глобальным балансом
+    const data = await getPayoutsDataWithGlobalBalance(user.id!);
 
-    return NextResponse.json({ months: monthsData });
+    return NextResponse.json({
+      globalBalance: data.globalBalance,
+      totalEarnings: data.totalEarnings,
+      totalPayouts: data.totalPayouts,
+      months: data.months
+    });
   } catch (error) {
     console.error('Ошибка при получении выплат:', error);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }
 
-// POST /api/payouts - создать новую выплату
+// POST /api/payouts - создать новую выплату (простая, без привязки к месяцу)
 export async function POST(request: NextRequest) {
   try {
     console.log('🔄 Начинаем создание выплаты...');
@@ -53,34 +53,44 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json();
-    const { month, amount, date, comment } = body;
-    console.log('📝 Данные выплаты:', { month, amount, date, comment });
+    const { amount, date, comment } = body;
+    console.log('📝 Данные выплаты:', { amount, date, comment });
 
     // Валидация
-    if (!month || !amount || !date) {
+    if (!amount || !date) {
       return NextResponse.json({
-        error: 'Месяц, сумма и дата обязательны'
+        error: 'Сумма и дата обязательны'
       }, { status: 400 });
     }
 
-    if (amount <= 0) {
+    if (parseFloat(amount) <= 0) {
       return NextResponse.json({
         error: 'Сумма должна быть больше 0'
       }, { status: 400 });
     }
 
-    // Создаем выплату с корректировкой (учитывает переплаты)
-    console.log('💰 Создаем выплату с коррекцией...');
-    const { payout, overpayment } = await createPayoutWithCorrection({
+    // Получаем текущий баланс для информации
+    const balanceBefore = await getUserBalance(user.id!);
+
+    // Создаем простую выплату
+    console.log('💰 Создаем выплату...');
+    const payout = await createSimplePayout({
       user_id: user.id!,
-      month,
       amount: parseFloat(amount),
       date,
-      comment: comment || ''
+      comment: comment || null
     });
-    console.log('✅ Выплата создана:', payout, 'Переплата:', overpayment);
+    console.log('✅ Выплата создана:', payout);
 
-    return NextResponse.json({ payout, overpayment });
+    // Получаем новый баланс
+    const balanceAfter = await getUserBalance(user.id!);
+
+    return NextResponse.json({
+      payout,
+      balanceBefore,
+      balanceAfter,
+      isAdvance: balanceAfter < 0
+    });
   } catch (error) {
     console.error('❌ Ошибка при создании выплаты:', error);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });

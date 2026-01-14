@@ -680,3 +680,73 @@ body {
   .balance-grid{ gap: 24px; }
   .balance-value{ font-size: 18px; }
 }
+/* Reports Page Responsive Styles */
+@media (max-width: 767px) {
+    .hide-mobile {
+        display: none !important;
+    }
+    .show-mobile {
+        display: block !important;
+    }
+}
+
+@media (min-width: 768px) {
+    .hide-desktop {
+        display: none !important;
+    }
+    .show-desktop {
+        display: block !important;
+    }
+}
+
+.report-card-mobile {
+    padding: 16px;
+    border-bottom: 1px solid #eee;
+    background: white;
+}
+
+.report-card-mobile:last-child {
+    border-bottom: none;
+}
+
+.report-card-mobile__header {
+    margin-bottom: 12px;
+}
+
+.report-card-mobile__name {
+    font-weight: bold;
+    font-size: 1.1rem;
+    color: var(--primary-color);
+}
+
+.report-card-mobile__balance {
+    font-size: 0.95rem;
+    margin-top: 4px;
+}
+
+.report-card-mobile__divider {
+    height: 1px;
+    background: #eee;
+    margin: 12px 0;
+}
+
+.report-card-mobile__row {
+    display: flex;
+    justify-content: space-between;
+    margin-bottom: 8px;
+    font-size: 0.95rem;
+}
+
+.report-card-mobile__label {
+    color: #666;
+}
+
+.report-card-mobile__value {
+    font-weight: 500;
+}
+
+.report-card-mobile__actions {
+    margin-top: 16px;
+    display: flex;
+    gap: 10px;
+}

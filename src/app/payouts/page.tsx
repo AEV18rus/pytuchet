@@ -44,8 +44,6 @@ interface MonthData {
   payouts: Payout[];
   remaining: number;
   total_payouts: number;
-  total_payouts_real: number;
-  advance_amount: number;
   progress: number;
   status: string;
 }
@@ -70,11 +68,13 @@ export default function PayoutsPage() {
   const { user: authUser } = useTelegramAuth();
   const [user, setUser] = useState<User | null>(null);
   const [months, setMonths] = useState<MonthData[]>([]);
+  const [globalBalance, setGlobalBalance] = useState<number>(0);
+  const [totalEarnings, setTotalEarnings] = useState<number>(0);
+  const [totalPayouts, setTotalPayouts] = useState<number>(0);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [showModal, setShowModal] = useState(false);
   const [modalData, setModalData] = useState({
-    month: '',
     amount: '',
     date: '',
     comment: ''
@@ -168,6 +168,11 @@ export default function PayoutsPage() {
       const data = await response.json();
       console.log('Received data:', data);
 
+      // Сохраняем глобальные данные
+      setGlobalBalance(data.globalBalance || 0);
+      setTotalEarnings(data.totalEarnings || 0);
+      setTotalPayouts(data.totalPayouts || 0);
+
       // API возвращает объект с полем months
       const monthsData = data.months || [];
 
@@ -208,7 +213,6 @@ export default function PayoutsPage() {
           'x-telegram-id': user.telegram_id.toString()
         },
         body: JSON.stringify({
-          month: modalData.month,
           amount: parseFloat(modalData.amount),
           date: modalData.date,
           comment: modalData.comment || undefined
@@ -220,7 +224,7 @@ export default function PayoutsPage() {
       }
 
       setShowModal(false);
-      setModalData({ month: '', amount: '', date: '', comment: '' });
+      setModalData({ amount: '', date: '', comment: '' });
       fetchPayouts();
     } catch (err) {
       console.error('Ошибка добавления выплаты:', err);
@@ -457,6 +461,40 @@ export default function PayoutsPage() {
             </div>
           </div>
 
+          {/* Глобальный баланс */}
+          <div className="global-balance-section">
+            <div className={`global-balance-card ${globalBalance < 0 ? 'advance' : globalBalance === 0 ? 'zero' : 'positive'}`}>
+              <div className="balance-header">
+                <span className="balance-label">Общий баланс:</span>
+                <span className="balance-value">
+                  {globalBalance >= 0 ? '+' : ''}{globalBalance.toLocaleString()} ₽
+                </span>
+              </div>
+              <div className="balance-details">
+                <div className="balance-row">
+                  <span>Заработано всего:</span>
+                  <span className="earned">{totalEarnings.toLocaleString()} ₽</span>
+                </div>
+                <div className="balance-row">
+                  <span>Выплачено всего:</span>
+                  <span className="paid">{totalPayouts.toLocaleString()} ₽</span>
+                </div>
+              </div>
+              {globalBalance < 0 && (
+                <div className="balance-warning">
+                  ⚠️ Аванс: выплачено больше, чем заработано
+                </div>
+              )}
+            </div>
+            <button
+              onClick={() => setShowModal(true)}
+              className="btn btn-add-payout"
+              disabled={authUser?.role === 'demo'}
+            >
+              + Добавить выплату
+            </button>
+          </div>
+
           {error && (
             <div className="error-message">
               {error}
@@ -497,12 +535,6 @@ export default function PayoutsPage() {
                       <span className="earnings-label">Выплачено:</span>
                       <span className="earnings-value paid">{(monthData.total_payouts || 0).toLocaleString()} ₽</span>
                     </div>
-                    {monthData.advance_amount > 0 && (
-                      <div className="earnings-simple">
-                        <span className="earnings-label">Аванс:</span>
-                        <span className="earnings-value advance">{monthData.advance_amount.toLocaleString()} ₽</span>
-                      </div>
-                    )}
                     <div className="earnings-simple">
                       <span className="earnings-label">Остаток:</span>
                       <span className="earnings-value remaining">{monthData.remaining.toLocaleString()} ₽</span>
@@ -527,10 +559,7 @@ export default function PayoutsPage() {
 
                   <div className="card-actions">
                     <button
-                      onClick={() => {
-                        setModalData(prev => ({ ...prev, month: monthData.month }));
-                        setShowModal(true);
-                      }}
+                      onClick={() => setShowModal(true)}
                       className="btn btn-primary"
                       disabled={authUser?.role === 'demo'}
                     >
@@ -581,19 +610,6 @@ export default function PayoutsPage() {
                             )}
                           </div>
                         ))}
-
-                        {/* Отображение аванса отдельной строкой */}
-                        {monthData.advance_amount > 0 && (
-                          <div className="history-item history-item--advance">
-                            <div className="history-separator"></div>
-                            <div className="history-info">
-                              <div className="history-amount advance-amount">Аванс: {monthData.advance_amount.toLocaleString()} ₽</div>
-                              <div className="history-details">
-                                Переносится на {getNextMonthName(monthData.month)}
-                              </div>
-                            </div>
-                          </div>
-                        )}
                       </div>
                     </div>
                   )}
@@ -609,16 +625,6 @@ export default function PayoutsPage() {
             <div className="modal-content">
               <h2 className="modal-title">Добавить выплату</h2>
               <form onSubmit={handleAddPayout} className="modal-form">
-                <div className="form-group">
-                  <label className="form-label">Месяц</label>
-                  <input
-                    type="month"
-                    value={modalData.month}
-                    onChange={(e) => setModalData(prev => ({ ...prev, month: e.target.value }))}
-                    className="form-input"
-                    required
-                  />
-                </div>
                 <div className="form-group">
                   <label className="form-label">Сумма (₽)</label>
                   <input
@@ -901,6 +907,124 @@ export default function PayoutsPage() {
         .btn-year-cancel:hover {
           background: #dc2626;
           transform: scale(1.05);
+        }
+
+        /* Глобальный баланс */
+        .global-balance-section {
+          display: flex;
+          flex-direction: column;
+          gap: 16px;
+          margin-bottom: 30px;
+          padding: 20px;
+          background: linear-gradient(135deg, var(--background-card) 0%, rgba(122, 62, 45, 0.05) 100%);
+          border-radius: 16px;
+          border: 2px solid var(--border-light);
+          box-shadow: 0 4px 15px var(--shadow-light);
+        }
+
+        .global-balance-card {
+          padding: 20px;
+          border-radius: 12px;
+          transition: all 0.3s ease;
+        }
+
+        .global-balance-card.positive {
+          background: linear-gradient(135deg, #dcfce7 0%, #bbf7d0 100%);
+          border: 2px solid #22c55e;
+        }
+
+        .global-balance-card.zero {
+          background: linear-gradient(135deg, #f3f4f6 0%, #e5e7eb 100%);
+          border: 2px solid #9ca3af;
+        }
+
+        .global-balance-card.advance {
+          background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%);
+          border: 2px solid #f59e0b;
+        }
+
+        .balance-header {
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          margin-bottom: 16px;
+        }
+
+        .balance-label {
+          font-size: 1.1em;
+          font-weight: 600;
+          color: var(--primary-color);
+        }
+
+        .balance-value {
+          font-size: 1.8em;
+          font-weight: 700;
+          color: var(--primary-color);
+        }
+
+        .global-balance-card.positive .balance-value {
+          color: #16a34a;
+        }
+
+        .global-balance-card.advance .balance-value {
+          color: #d97706;
+        }
+
+        .balance-details {
+          display: flex;
+          flex-direction: column;
+          gap: 8px;
+        }
+
+        .balance-row {
+          display: flex;
+          justify-content: space-between;
+          font-size: 0.95em;
+          color: var(--font-color);
+        }
+
+        .balance-row .earned {
+          color: #16a34a;
+          font-weight: 600;
+        }
+
+        .balance-row .paid {
+          color: #dc2626;
+          font-weight: 600;
+        }
+
+        .balance-warning {
+          margin-top: 12px;
+          padding: 10px;
+          background: rgba(245, 158, 11, 0.2);
+          border-radius: 8px;
+          font-size: 0.9em;
+          color: #92400e;
+          text-align: center;
+          font-weight: 500;
+        }
+
+        .btn-add-payout {
+          background: linear-gradient(135deg, var(--primary-color) 0%, var(--secondary-color) 100%);
+          color: white;
+          padding: 14px 24px;
+          border: none;
+          border-radius: 10px;
+          font-size: 1em;
+          font-weight: 600;
+          cursor: pointer;
+          transition: all 0.3s ease;
+          box-shadow: 0 4px 15px rgba(74, 43, 27, 0.3);
+        }
+
+        .btn-add-payout:hover:not(:disabled) {
+          transform: translateY(-2px);
+          box-shadow: 0 6px 20px rgba(74, 43, 27, 0.4);
+        }
+
+        .btn-add-payout:disabled {
+          opacity: 0.5;
+          cursor: not-allowed;
         }
 
         .page-header {

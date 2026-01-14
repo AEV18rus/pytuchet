@@ -1957,3 +1957,603 @@ async function processOverpaymentCarryoverOptimized(
     console.warn(`Достигнуто максимальное количество итераций (${maxIterations}) при обработке переносов`);
   }
 }
+
+// ============================================================================
+// НОВЫЙ ПОДХОД: ГЛОБАЛЬНЫЙ БАЛАНС
+// ============================================================================
+// Выплаты больше не привязываются к месяцам. Баланс = сумма всех заработков - сумма всех выплат.
+// Статус месяца вычисляется по FIFO: выплаты закрывают месяцы по порядку.
+// ============================================================================
+
+/**
+ * Получить общую сумму заработка пользователя (сумма всех смен)
+ */
+export async function getTotalEarnings(userId: number): Promise<number> {
+  try {
+    const result = await executeQuery(
+      `SELECT COALESCE(SUM(total), 0) as total_earnings FROM shifts WHERE user_id = $1`,
+      [userId]
+    );
+    return parseFloat(result.rows[0]?.total_earnings || '0');
+  } catch (error) {
+    console.error('Ошибка при получении общего заработка:', error);
+    throw error;
+  }
+}
+
+/**
+ * Получить общую сумму выплат пользователя (сумма всех выплат, без откатанных)
+ */
+export async function getTotalPayouts(userId: number): Promise<number> {
+  try {
+    const result = await executeQuery(
+      `SELECT COALESCE(SUM(amount), 0) as total_payouts 
+       FROM payouts 
+       WHERE user_id = $1 AND reversed_at IS NULL`,
+      [userId]
+    );
+    return parseFloat(result.rows[0]?.total_payouts || '0');
+  } catch (error) {
+    console.error('Ошибка при получении общей суммы выплат:', error);
+    throw error;
+  }
+}
+
+/**
+ * Получить глобальный баланс пользователя (заработок - выплаты)
+ * Положительный баланс = должны мастеру
+ * Отрицательный баланс = аванс (мастер получил больше, чем заработал)
+ */
+export async function getUserBalance(userId: number): Promise<number> {
+  try {
+    const earnings = await getTotalEarnings(userId);
+    const payouts = await getTotalPayouts(userId);
+    return earnings - payouts;
+  } catch (error) {
+    console.error('Ошибка при получении баланса пользователя:', error);
+    throw error;
+  }
+}
+
+/**
+ * Получить накопленный заработок до конца указанного месяца (включительно)
+ * Используется для определения статуса месяца по FIFO
+ */
+export async function getCumulativeEarningsUpToMonth(userId: number, month: string): Promise<number> {
+  try {
+    // Получаем последний день месяца
+    const [year, monthNum] = month.split('-').map(Number);
+    const lastDayOfMonth = new Date(year, monthNum, 0).getDate();
+    const endDate = `${month}-${String(lastDayOfMonth).padStart(2, '0')}`;
+
+    const result = await executeQuery(
+      `SELECT COALESCE(SUM(total), 0) as cumulative_earnings 
+       FROM shifts 
+       WHERE user_id = $1 AND date <= $2`,
+      [userId, endDate]
+    );
+    return parseFloat(result.rows[0]?.cumulative_earnings || '0');
+  } catch (error) {
+    console.error('Ошибка при получении накопленного заработка:', error);
+    throw error;
+  }
+}
+
+/**
+ * Получить заработок за конкретный месяц
+ */
+export async function getMonthEarnings(userId: number, month: string): Promise<number> {
+  try {
+    const result = await executeQuery(
+      `SELECT COALESCE(SUM(total), 0) as month_earnings 
+       FROM shifts 
+       WHERE user_id = $1 
+       AND TO_CHAR(DATE_TRUNC('month', date::date), 'YYYY-MM') = $2`,
+      [userId, month]
+    );
+    return parseFloat(result.rows[0]?.month_earnings || '0');
+  } catch (error) {
+    console.error('Ошибка при получении заработка за месяц:', error);
+    throw error;
+  }
+}
+
+/**
+ * Определить статус месяца по FIFO (закрыт/частично/не оплачен)
+ * и сумму остатка по этому месяцу
+ */
+export async function getMonthStatusByBalance(
+  userId: number,
+  month: string
+): Promise<{ status: 'closed' | 'partial' | 'unpaid'; paidAmount: number; remainingAmount: number }> {
+  try {
+    // Накопленный заработок до конца этого месяца
+    const cumulativeEarnings = await getCumulativeEarningsUpToMonth(userId, month);
+
+    // Все выплаты пользователя
+    const totalPayouts = await getTotalPayouts(userId);
+
+    // Заработок именно за этот месяц
+    const monthEarnings = await getMonthEarnings(userId, month);
+
+    // Сколько заработано ДО этого месяца
+    const previousEarnings = cumulativeEarnings - monthEarnings;
+
+    // Сколько выплат "дошло" до этого месяца
+    const payoutsAvailableForMonth = Math.max(0, totalPayouts - previousEarnings);
+
+    // Сколько из этого месяца оплачено
+    const paidAmount = Math.min(payoutsAvailableForMonth, monthEarnings);
+
+    // Сколько осталось по этому месяцу
+    const remainingAmount = Math.max(0, monthEarnings - paidAmount);
+
+    let status: 'closed' | 'partial' | 'unpaid';
+
+    if (paidAmount >= monthEarnings && monthEarnings > 0) {
+      status = 'closed';
+    } else if (paidAmount > 0) {
+      status = 'partial';
+    } else {
+      status = 'unpaid';
+    }
+
+    return { status, paidAmount, remainingAmount };
+  } catch (error) {
+    console.error('Ошибка при определении статуса месяца:', error);
+    throw error;
+  }
+}
+
+/**
+ * Создать простую выплату (без привязки к месяцу, только дата и сумма)
+ */
+export async function createSimplePayout(payout: {
+  user_id: number;
+  amount: number;
+  date: string;
+  comment?: string | null;
+  initiated_by?: number | null;
+  initiator_role?: 'admin' | 'master' | 'system' | null;
+  method?: string | null;
+  source?: string | null;
+}): Promise<Payout> {
+  try {
+    // Определяем месяц из даты для обратной совместимости
+    const month = payout.date.substring(0, 7); // "YYYY-MM"
+
+    const result = await executeQuery(
+      `INSERT INTO payouts (
+        user_id, 
+        month,
+        amount, 
+        date, 
+        comment, 
+        initiated_by, 
+        initiator_role, 
+        method, 
+        source,
+        is_advance
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, FALSE) RETURNING *`,
+      [
+        payout.user_id,
+        month,
+        payout.amount,
+        payout.date,
+        payout.comment ?? null,
+        payout.initiated_by ?? payout.user_id,
+        payout.initiator_role ?? 'master',
+        payout.method ?? null,
+        payout.source ?? null
+      ]
+    );
+    return result.rows[0] as Payout;
+  } catch (error) {
+    console.error('Ошибка при создании простой выплаты:', error);
+    throw error;
+  }
+}
+
+/**
+ * Оптимизированная функция для получения данных о выплатах с глобальным балансом
+ * Возвращает данные по месяцам со статусами по FIFO
+ */
+export async function getPayoutsDataWithGlobalBalance(userId: number): Promise<{
+  globalBalance: number;
+  totalEarnings: number;
+  totalPayouts: number;
+  months: any[];
+}> {
+  try {
+    // Получаем глобальные суммы
+    const totalEarnings = await getTotalEarnings(userId);
+    const totalPayouts = await getTotalPayouts(userId);
+    const globalBalance = totalEarnings - totalPayouts;
+
+    // Получаем все месяцы с заработком
+    const monthsResult = await executeQuery(
+      `SELECT 
+        TO_CHAR(DATE_TRUNC('month', date::date), 'YYYY-MM') as month,
+        SUM(total) as earnings
+       FROM shifts 
+       WHERE user_id = $1
+       GROUP BY month
+       ORDER BY month ASC`,
+      [userId]
+    );
+
+    // Получаем все выплаты пользователя
+    const payoutsResult = await executeQuery(
+      `SELECT 
+        id, amount, date, comment, initiated_by, initiator_role, 
+        method, source, reversed_at, reversed_by, reversal_reason, is_advance,
+        TO_CHAR(date::date, 'YYYY-MM') as payout_month
+       FROM payouts 
+       WHERE user_id = $1
+       ORDER BY date DESC, created_at DESC, id DESC`,
+      [userId]
+    );
+
+    const allPayouts = payoutsResult.rows;
+
+    // Вычисляем статусы месяцев по FIFO
+    let cumulativeEarnings = 0;
+    const monthsData = [];
+
+    for (const row of monthsResult.rows) {
+      const monthEarnings = parseFloat(row.earnings);
+      const previousEarnings = cumulativeEarnings;
+      cumulativeEarnings += monthEarnings;
+
+      // Сколько выплат "дошло" до этого месяца
+      const payoutsAvailableForMonth = Math.max(0, totalPayouts - previousEarnings);
+
+      // Сколько из этого месяца оплачено
+      const paidAmount = Math.min(payoutsAvailableForMonth, monthEarnings);
+
+      // Сколько осталось по этому месяцу
+      const remainingAmount = Math.max(0, monthEarnings - paidAmount);
+
+      // Прогресс в процентах
+      const progress = monthEarnings > 0 ? Math.round((paidAmount / monthEarnings) * 100) : 0;
+
+      // Статус
+      let status: string;
+      if (paidAmount >= monthEarnings && monthEarnings > 0) {
+        status = 'closed';
+      } else if (paidAmount > 0) {
+        status = 'partial';
+      } else {
+        status = 'unpaid';
+      }
+
+      // Получаем выплаты, связанные с этим месяцем (по дате)
+      const monthPayouts = allPayouts.filter((p: any) => p.payout_month === row.month);
+
+      monthsData.push({
+        month: row.month,
+        earnings: monthEarnings,
+        total_payouts: paidAmount,
+        remaining: remainingAmount,
+        progress,
+        status,
+        payouts: monthPayouts
+      });
+    }
+
+    // Сортируем по месяцам в обратном порядке (новые сначала)
+    monthsData.reverse();
+
+    return {
+      globalBalance,
+      totalEarnings,
+      totalPayouts,
+      months: monthsData
+    };
+  } catch (error) {
+    console.error('Ошибка при получении данных о выплатах с глобальным балансом:', error);
+    throw error;
+  }
+}
+
+/**
+ * Получить все выплаты пользователя (для истории)
+ */
+export async function getAllPayoutsForUser(userId: number): Promise<Payout[]> {
+  try {
+    const result = await executeQuery(
+      `SELECT * FROM payouts 
+       WHERE user_id = $1 
+       ORDER BY date DESC, created_at DESC, id DESC`,
+      [userId]
+    );
+    return result.rows as Payout[];
+  } catch (error) {
+    console.error('Ошибка при получении всех выплат пользователя:', error);
+    throw error;
+  }
+}
+
+/**
+ * Получить отчёты для админа с глобальным балансом
+ * Статус месяца и остаток рассчитываются по FIFO
+ */
+export async function getReportsWithGlobalBalance(targetMonth?: string): Promise<any[]> {
+  try {
+    // Получаем всех активных пользователей с их заработками и выплатами
+    const usersResult = await executeQuery(`
+      SELECT 
+        u.id as user_id,
+        u.first_name,
+        u.last_name,
+        u.display_name,
+        COALESCE(earnings.total, 0) as total_earnings,
+        COALESCE(payouts.total, 0) as total_payouts
+      FROM users u
+      LEFT JOIN (
+        SELECT user_id, SUM(total) as total
+        FROM shifts
+        GROUP BY user_id
+      ) earnings ON u.id = earnings.user_id
+      LEFT JOIN (
+        SELECT user_id, SUM(amount) as total
+        FROM payouts
+        WHERE reversed_at IS NULL
+        GROUP BY user_id
+      ) payouts ON u.id = payouts.user_id
+      WHERE (u.is_blocked = false OR u.is_blocked IS NULL)
+      AND COALESCE(earnings.total, 0) > 0
+    `);
+
+    const users = usersResult.rows;
+
+    // Получаем месяцы с заработками
+    let monthsQuery = `
+      SELECT DISTINCT TO_CHAR(DATE_TRUNC('month', date::date), 'YYYY-MM') as month
+      FROM shifts
+    `;
+    const monthsParams: any[] = [];
+
+    if (targetMonth) {
+      monthsQuery += ` WHERE TO_CHAR(DATE_TRUNC('month', date::date), 'YYYY-MM') = $1`;
+      monthsParams.push(targetMonth);
+    }
+
+    monthsQuery += ` ORDER BY month ASC`;
+
+    const monthsResult = await executeQuery(monthsQuery, monthsParams);
+    const months = monthsResult.rows.map((r: any) => r.month);
+
+    // Для каждого пользователя строим данные по месяцам с FIFO
+    const result: any[] = [];
+
+    for (const month of months) {
+      const employeesData: any[] = [];
+
+      for (const user of users) {
+        const userId = user.user_id;
+        const totalPayouts = parseFloat(user.total_payouts) || 0;
+
+        // Получаем накопленный заработок до конца этого месяца
+        const cumulativeResult = await executeQuery(`
+          SELECT COALESCE(SUM(total), 0) as cumulative
+          FROM shifts
+          WHERE user_id = $1 
+          AND date::date <= (DATE_TRUNC('month', $2::date) + INTERVAL '1 month - 1 day')::date
+        `, [userId, month + '-01']);
+        const cumulativeEarnings = parseFloat(cumulativeResult.rows[0]?.cumulative) || 0;
+
+        // Заработок за этот месяц
+        const monthResult = await executeQuery(`
+          SELECT COALESCE(SUM(total), 0) as month_earnings
+          FROM shifts
+          WHERE user_id = $1 
+          AND TO_CHAR(DATE_TRUNC('month', date::date), 'YYYY-MM') = $2
+        `, [userId, month]);
+        const monthEarnings = parseFloat(monthResult.rows[0]?.month_earnings) || 0;
+
+        if (monthEarnings === 0) continue; // Пропускаем месяцы без заработка
+
+        // Заработок ДО этого месяца
+        const previousEarnings = cumulativeEarnings - monthEarnings;
+
+        // Сколько выплат "дошло" до этого месяца по FIFO
+        const payoutsAvailableForMonth = Math.max(0, totalPayouts - previousEarnings);
+
+        // Сколько оплачено из этого месяца
+        const paidAmount = Math.min(payoutsAvailableForMonth, monthEarnings);
+
+        // Остаток по этому месяцу
+        const remainingAmount = Math.max(0, monthEarnings - paidAmount);
+
+        // Получаем последние выплаты пользователя
+        const payoutsResult = await executeQuery(`
+          SELECT id, amount, date, comment, initiated_by, initiator_role, 
+                 method, source, reversed_at, reversed_by, reversal_reason, is_advance
+          FROM payouts
+          WHERE user_id = $1
+          ORDER BY date DESC, created_at DESC, id DESC
+          LIMIT 5
+        `, [userId]);
+
+        employeesData.push({
+          user_id: userId,
+          first_name: user.first_name,
+          last_name: user.last_name,
+          display_name: user.display_name,
+          earnings: monthEarnings,
+          total_payouts: paidAmount,
+          remaining: remainingAmount,
+          recent_payouts: payoutsResult.rows,
+          // Глобальные данные пользователя
+          global_balance: parseFloat(user.total_earnings) - parseFloat(user.total_payouts)
+        });
+      }
+
+      if (employeesData.length > 0) {
+        result.push({
+          month,
+          employees: employeesData
+        });
+      }
+    }
+
+    // Сортируем по месяцам в обратном порядке
+    return result.sort((a, b) => b.month.localeCompare(a.month));
+  } catch (error) {
+    console.error('Ошибка при получении отчётов с глобальным балансом:', error);
+    throw error;
+  }
+}
+
+/**
+ * Получить отчёты для админа с глобальным балансом
+ * Оптимизированная версия: 3 запроса вместо N*M
+ */
+export async function getReportsWithGlobalBalanceOptimized(targetMonth?: string): Promise<any[]> {
+  try {
+    // 1. Получаем общие данные пользователей (всего заработано, всего выплачено)
+    const usersResult = await executeQuery(`
+      SELECT 
+        u.id as user_id,
+        u.first_name,
+        u.last_name,
+        u.display_name,
+        COALESCE(earnings.total, 0) as total_earnings,
+        COALESCE(payouts.total, 0) as total_payouts
+      FROM users u
+      LEFT JOIN (
+        SELECT user_id, SUM(total) as total
+        FROM shifts
+        GROUP BY user_id
+      ) earnings ON u.id = earnings.user_id
+      LEFT JOIN (
+        SELECT user_id, SUM(amount) as total
+        FROM payouts
+        WHERE reversed_at IS NULL
+        GROUP BY user_id
+      ) payouts ON u.id = payouts.user_id
+      WHERE (u.is_blocked = false OR u.is_blocked IS NULL)
+      AND COALESCE(earnings.total, 0) > 0
+      ORDER BY u.first_name, u.last_name
+    `);
+
+    const users = usersResult.rows;
+
+    // 2. Получаем заработок по месяцам для всех пользователей разом
+    let monthlyEarningsQuery = `
+      SELECT 
+        user_id,
+        TO_CHAR(DATE_TRUNC('month', date::date), 'YYYY-MM') as month,
+        SUM(total) as month_earnings
+      FROM shifts
+      GROUP BY user_id, month
+      ORDER BY month ASC
+    `;
+
+    // Если нужен конкретный месяц, фильтруем сразу, но для FIFO нам нужна вся история
+    // Поэтому загружаем всё, а фильтруем при формировании результата
+
+    const monthlyEarningsResult = await executeQuery(monthlyEarningsQuery);
+
+    // Группируем заработки по пользователям: { userId: [{ month, earnings }, ...] }
+    const userEarningsHistory: Record<number, { month: string; earnings: number }[]> = {};
+
+    monthlyEarningsResult.rows.forEach((row: any) => {
+      if (!userEarningsHistory[row.user_id]) {
+        userEarningsHistory[row.user_id] = [];
+      }
+      userEarningsHistory[row.user_id].push({
+        month: row.month,
+        earnings: parseFloat(row.month_earnings)
+      });
+    });
+
+    // 3. Получаем последние выплаты для всех пользователей (Lateral Join)
+    const recentPayoutsResult = await executeQuery(`
+          SELECT * FROM (
+            SELECT 
+              id, user_id, amount, date, comment, initiated_by, 
+              initiator_role, method, source, reversed_at, 
+              reversed_by, reversal_reason, is_advance,
+              ROW_NUMBER() OVER (PARTITION BY user_id ORDER BY date DESC, id DESC) as rn
+            FROM payouts
+          ) sub
+          WHERE rn <= 5
+          ORDER BY user_id, date DESC
+        `);
+
+    // Группируем выплаты по пользователям
+    const userPayoutsHistory: Record<number, any[]> = {};
+    recentPayoutsResult.rows.forEach((row: any) => {
+      if (!userPayoutsHistory[row.user_id]) {
+        userPayoutsHistory[row.user_id] = [];
+      }
+      userPayoutsHistory[row.user_id].push(row);
+    });
+
+    // 4. Формируем результат в памяти
+    const reportDataByMonth: Record<string, any[]> = {};
+
+    for (const user of users) {
+      const userId = user.user_id;
+      const totalPayouts = parseFloat(user.total_payouts) || 0;
+      const earningsHistory = userEarningsHistory[userId] || [];
+      const recentPayouts = userPayoutsHistory[userId] || [];
+
+      let cumulativeEarnings = 0;
+
+      for (const record of earningsHistory) {
+        const month = record.month;
+        const monthEarnings = record.earnings;
+
+        // Накопленный заработок ДО этого месяца включительно
+        cumulativeEarnings += monthEarnings;
+
+        // Заработок ДО начала этого месяца
+        const previousEarnings = cumulativeEarnings - monthEarnings;
+
+        // Сколько выплат "дошло" до этого месяца по FIFO
+        const payoutsAvailableForMonth = Math.max(0, totalPayouts - previousEarnings);
+
+        // Сколько оплачено из этого месяца
+        const paidAmount = Math.min(payoutsAvailableForMonth, monthEarnings);
+
+        // Остаток по этому месяцу
+        const remainingAmount = Math.max(0, monthEarnings - paidAmount);
+
+        if (!reportDataByMonth[month]) {
+          reportDataByMonth[month] = [];
+        }
+
+        // Если запрошен конкретный месяц, добавляем только его, иначе все
+        if (!targetMonth || targetMonth === month) {
+          reportDataByMonth[month].push({
+            user_id: userId,
+            first_name: user.first_name,
+            last_name: user.last_name,
+            display_name: user.display_name,
+            earnings: monthEarnings,
+            total_payouts: paidAmount,
+            remaining: remainingAmount,
+            recent_payouts: recentPayouts, // Просто отдаём последние выплаты
+            global_balance: parseFloat(user.total_earnings) - parseFloat(user.total_payouts)
+          });
+        }
+      }
+    }
+
+    // Преобразуем объект в массив
+    const result = Object.entries(reportDataByMonth).map(([month, employees]) => ({
+      month,
+      employees
+    }));
+
+    // Сортируем по месяцам в обратном порядке
+    return result.sort((a, b) => b.month.localeCompare(a.month));
+
+  } catch (error) {
+    console.error('Ошибка при получении (оптимизированных) отчётов:', error);
+    throw error;
+  }
+}

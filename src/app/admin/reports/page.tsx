@@ -1,115 +1,89 @@
 'use client';
 
-import { useState, useEffect, KeyboardEvent } from 'react';
+import { useState, useEffect } from 'react';
 import Image from 'next/image';
 import { useRouter } from 'next/navigation';
-import { useServices } from '@/contexts/ServicesContext';
 import { getAuthHeaders } from '@/lib/auth';
-import { ToastContainer, ToastVariant, useToast } from '@/components/Toast';
-import { PaymentsList, Payment as HistoryPayment } from '@/components/PaymentsList';
-import { NewPaymentForm } from '@/components/NewPaymentForm';
 
-// Интерфейсы данных
-interface PayoutHistoryEntry {
+// --- Интерфейсы ---
+
+interface Payout {
   id: number;
   amount: number;
   date: string;
   comment?: string;
-  initiator_role?: 'admin' | 'master' | 'system' | null;
-  initiated_by?: number | null;
-  method?: string | null;
-  source?: string | null;
-  reversed_at?: string | null;
-  reversal_reason?: string | null;
   is_advance?: boolean;
-}
-
-interface Employee {
-  id: number;
-  name: string;
-  earned: number;
-  paid: number;
-  outstanding: number;
-  recentPayouts?: PayoutHistoryEntry[];
-}
-
-interface Month {
-  month: string;
-  status: string;
-  totalEarned: number;
-  totalPaid: number;
-  totalOutstanding: number;
-  employees: Employee[];
 }
 
 interface Shift {
   id: number;
-  masterName: string;
   date: string;
   hours: number;
-  steamBath: number;
-  brandSteam: number;
-  introSteam: number;
-  scrubbing: number;
-  masters: number;
   amount: number;
-  services?: string | { [key: string]: number };
+  masters: number;
 }
 
-type ShiftLoadingEntry = {
-  loading: boolean;
-  error: boolean;
-  data: Shift[] | null;
+interface Employee {
+  // Универсальный интерфейс с поддержкой legacy полей
+  user_id?: number;
+  id?: number;
+
+  first_name?: string;
+  firstName?: string;
+  last_name?: string;
+  lastName?: string;
+  display_name?: string;
+  displayName?: string;
+  name?: string; // Legacy
+
+  earnings: number | string;
+  earned?: number | string; // Legacy
+
+  total_payouts: number | string;
+  paid?: number | string; // Legacy
+
+  remaining: number | string;
+  outstanding?: number | string; // Legacy
+
+  global_balance?: number | string;
+  globalBalance?: number | string; // Legacy
+}
+
+interface MonthData {
+  month: string;
+  employees: Employee[];
+}
+
+// --- Утилиты ---
+
+const safeNumber = (val: number | string | undefined): number => {
+  if (val === undefined || val === null) return 0;
+  const num = typeof val === 'string' ? parseFloat(val) : val;
+  return isNaN(num) ? 0 : num;
 };
 
-type ShiftLoadingState = Record<string, ShiftLoadingEntry>;
-
-interface AdminPayoutUpdatePayload {
-  employeeId: number;
-  month: string;
-  summary: {
-    earnings: number;
-    totalPaid: number;
-    remaining: number;
-  };
-  history?: PayoutHistoryEntry[];
-}
-
-interface AdminPayoutSummary {
-  earnings: number;
-  totalPaid: number;
-  remaining: number;
-}
-
-interface AdminPayoutMutationResponse {
-  summary?: AdminPayoutSummary;
-  history?: PayoutHistoryEntry[];
-  overpayment?: number;
-  payout?: { amount: number };
-  error?: string;
-}
-
-// Утилиты форматирования
-const formatCurrency = (amount: number): string => {
-  const formatted = new Intl.NumberFormat('ru-RU', {
+const formatCurrency = (amount: number | string | undefined): string => {
+  const num = safeNumber(amount);
+  return new Intl.NumberFormat('ru-RU', {
     style: 'currency',
     currency: 'RUB',
     minimumFractionDigits: 0,
     maximumFractionDigits: 0,
-  }).format(amount);
-
-  return formatted.replace(/\u00A0/g, '\u202F');
+  }).format(num).replace(/\u00A0/g, '\u202F');
 };
 
 const formatDate = (dateString: string): string => {
+  if (!dateString) return '';
   const date = new Date(dateString);
   return date.toLocaleDateString('ru-RU', {
     day: '2-digit',
     month: '2-digit',
+    year: '2-digit'
   });
 };
 
 const formatMonthName = (monthString: string): string => {
+  if (!monthString) return '';
   const [year, month] = monthString.split('-');
   const date = new Date(parseInt(year), parseInt(month) - 1);
   return date.toLocaleDateString('ru-RU', {
@@ -118,648 +92,488 @@ const formatMonthName = (monthString: string): string => {
   });
 };
 
-// Функции для статуса
-const getStatusText = (status: string): string => {
-  switch (status) {
-    case 'open': return 'Не закрыт';
-    case 'partial': return 'Частично закрыт';
-    case 'closed': return 'Закрыт';
-    default: return status;
+// --- Стили (Inline) ---
+const styles = {
+  modalBackdrop: {
+    position: 'fixed' as const,
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: 1000,
+  },
+  modalContent: {
+    backgroundColor: 'white',
+    borderRadius: '12px',
+    boxShadow: '0 4px 20px rgba(0,0,0,0.15)',
+    width: '90%',
+    maxWidth: '700px',
+    maxHeight: '90vh',
+    display: 'flex',
+    flexDirection: 'column' as const,
+    overflow: 'hidden',
+  },
+  modalHeader: {
+    padding: '20px',
+    borderBottom: '1px solid #eee',
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    fontWeight: 'bold',
+    fontSize: '18px',
+  },
+  modalBody: {
+    padding: '20px',
+    overflowY: 'auto' as const,
+    overflowX: 'auto' as const,
+  },
+  modalFooter: {
+    padding: '15px 20px',
+    borderTop: '1px solid #eee',
+    textAlign: 'right' as const,
+    backgroundColor: '#f9fafb',
+  },
+  table: {
+    width: '100%',
+    borderCollapse: 'collapse' as const,
+    marginTop: '10px',
+  },
+  th: {
+    textAlign: 'left' as const,
+    padding: '10px',
+    borderBottom: '2px solid #eee',
+    color: '#666',
+    fontWeight: 600,
+  },
+  td: {
+    padding: '10px',
+    borderBottom: '1px solid #eee',
+  },
+  card: {
+    backgroundColor: 'white',
+    borderRadius: '12px',
+    boxShadow: '0 2px 8px rgba(0,0,0,0.05)',
+    marginBottom: '24px',
+    overflow: 'hidden',
+  },
+  cardHeader: {
+    backgroundColor: '#f8fafc',
+    padding: '16px 24px',
+    borderBottom: '1px solid #eee',
+    fontWeight: 'bold',
+    fontSize: '18px',
+    color: '#333',
+  },
+  btnSmall: {
+    padding: '6px 12px',
+    fontSize: '13px',
+    borderRadius: '6px',
+    cursor: 'pointer',
+    border: 'none',
+    marginRight: '8px',
+    fontWeight: 500,
+  },
+  btnBlue: {
+    backgroundColor: '#e0f2fe',
+    color: '#0369a1',
+  },
+  btnPurple: {
+    backgroundColor: '#f3e8ff',
+    color: '#7e22ce',
+  },
+  debtText: {
+    color: '#d97706',
+    fontWeight: 'bold' as const,
+    marginLeft: '5px',
+  },
+  creditText: {
+    color: '#059669',
+    fontWeight: 'bold' as const,
+    marginLeft: '5px',
   }
 };
 
-const getStatusCircle = (status: string) => {
-  const statusText = getStatusText(status);
+// --- Компоненты ---
+
+function ShiftsModal({
+  employeeId,
+  employeeName,
+  month,
+  onClose
+}: {
+  employeeId: number,
+  employeeName: string,
+  month: string,
+  onClose: () => void
+}) {
+  const [shifts, setShifts] = useState<Shift[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    const fetchShifts = async () => {
+      try {
+        const res = await fetch(`/api/reports/${employeeId}/shifts?month=${month}`, {
+          headers: getAuthHeaders()
+        });
+        if (!res.ok) throw new Error('Ошибка загрузки смен');
+        const data = await res.json();
+        setShifts(data.shifts || []);
+      } catch (err) {
+        setError('Не удалось загрузить смены');
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchShifts();
+  }, [employeeId, month]);
 
   return (
-    <span
-      className={`status-circle status-circle--${status}`}
-      title={statusText}
-      aria-label={statusText}
-    />
-  );
-};
+    <div style={styles.modalBackdrop} onClick={onClose}>
+      <div style={styles.modalContent} onClick={e => e.stopPropagation()}>
+        <div style={styles.modalHeader}>
+          <span>Смены: {employeeName} ({formatMonthName(month)})</span>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', fontSize: '24px', cursor: 'pointer' }}>&times;</button>
+        </div>
+        <div style={styles.modalBody}>
+          {loading && <div style={{ textAlign: 'center', padding: '20px' }}>Загрузка...</div>}
+          {error && <div style={{ textAlign: 'center', padding: '20px', color: 'red' }}>{error}</div>}
 
-const getNextMonthString = (monthString: string): string => {
-  const [year, month] = monthString.split('-').map(Number);
-  const nextDate = new Date(year, month, 1);
-  return `${nextDate.getFullYear()}-${String(nextDate.getMonth() + 1).padStart(2, '0')}`;
-};
-
-// Компонент таблицы смен
-function ShiftsTable({ shifts }: { shifts: Shift[] }) {
-  const { prices } = useServices();
-  const servicePrices = prices.filter(price => price.name !== 'Почасовая ставка');
-
-  return (
-    <div className="shift-card-list">
-      {shifts.map((shift) => {
-        // Парсим данные услуг
-        let servicesData: { [key: string]: number } = {};
-        if (shift.services) {
-          try {
-            servicesData = typeof shift.services === 'string'
-              ? JSON.parse(shift.services)
-              : shift.services;
-          } catch (e) {
-            console.error('Error parsing services data:', e);
-          }
-        }
-
-        const getServiceCount = (serviceName: string): number => {
-          if (servicesData[serviceName] !== undefined) {
-            return servicesData[serviceName];
-          }
-
-          switch (serviceName) {
-            case 'Путевое парение':
-              return shift.steamBath || 0;
-            case 'Фирменное парение':
-              return shift.brandSteam || 0;
-            case 'Ознакомительное парение':
-              return shift.introSteam || 0;
-            case 'Скрабирование':
-              return shift.scrubbing || 0;
-            default:
-              return 0;
-          }
-        };
-
-        const visibleServices = servicePrices
-          .map(price => ({
-            name: price.name,
-            count: getServiceCount(price.name)
-          }))
-          .filter(service => service.count > 0);
-        const totalFormatted = formatCurrency(shift.amount).replace(/\s*₽/, '₽');
-
-        return (
-          <div key={shift.id} className="shift-card">
-            <div className="shift-card__header">
-              <div>
-                <div className="shift-card__date">{formatDate(shift.date)}</div>
-                <div className="shift-card__masters">мастеров: {shift.masters}</div>
-              </div>
-              <span className="shift-card__hours-badge">
-                {shift.hours} ч
-              </span>
+          {!loading && !error && (
+            shifts.length === 0 ? (
+              <div style={{ textAlign: 'center', color: '#888' }}>Смен нет</div>
+            ) : (
+              <table style={styles.table}>
+                <thead>
+                  <tr>
+                    <th style={styles.th}>Дата</th>
+                    <th style={styles.th}>Часы</th>
+                    <th style={styles.th}>Мастеров</th>
+                    <th style={{ ...styles.th, textAlign: 'right' }}>Сумма</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {shifts.map(shift => (
+                    <tr key={shift.id}>
+                      <td style={styles.td}>{formatDate(shift.date)}</td>
+                      <td style={styles.td}>{shift.hours} ч</td>
+                      <td style={styles.td}>{shift.masters}</td>
+                      <td style={{ ...styles.td, textAlign: 'right', fontWeight: 500 }}>
+                        {formatCurrency(shift.amount)}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )
+          )}
+        </div>
+        <div style={styles.modalFooter}>
+          {!loading && shifts.length > 0 && (
+            <div style={{ marginBottom: '10px', fontWeight: 'bold' }}>
+              Итого: {formatCurrency(shifts.reduce((acc, s) => acc + s.amount, 0))}
             </div>
-
-            {visibleServices.length > 0 && (
-              <div className="shift-card__services">
-                {visibleServices.map(service => (
-                  <div className="shift-card__service-row" key={service.name}>
-                    <span>{service.name}</span>
-                    <span>{service.count}</span>
-                  </div>
-                ))}
-              </div>
-            )}
-
-            <div className="shift-card__total" aria-label="Итого за смену">
-              <span className="shift-card__total-value">{totalFormatted}</span>
-            </div>
-          </div>
-        );
-      })}
+          )}
+          <button className="btn btn-secondary" onClick={onClose}>Закрыть</button>
+        </div>
+      </div>
     </div>
   );
 }
 
-// Компонент строки сотрудника
+function PayoutsModal({
+  employeeId,
+  employeeName,
+  onClose
+}: {
+  employeeId: number,
+  employeeName: string,
+  onClose: () => void
+}) {
+  const [payouts, setPayouts] = useState<Payout[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    const fetchPayouts = async () => {
+      try {
+        const res = await fetch(`/api/admin/payouts?userId=${employeeId}`, {
+          headers: getAuthHeaders()
+        });
+        if (!res.ok) throw new Error('Ошибка загрузки выплат');
+        const data = await res.json();
+        setPayouts(data.payouts || []);
+      } catch (err) {
+        setError('Не удалось загрузить выплаты');
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchPayouts();
+  }, [employeeId]);
+
+  return (
+    <div style={styles.modalBackdrop} onClick={onClose}>
+      <div style={styles.modalContent} onClick={e => e.stopPropagation()}>
+        <div style={styles.modalHeader}>
+          <span>История выплат: {employeeName}</span>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', fontSize: '24px', cursor: 'pointer' }}>&times;</button>
+        </div>
+        <div style={styles.modalBody}>
+          {loading && <div style={{ textAlign: 'center', padding: '20px' }}>Загрузка...</div>}
+          {error && <div style={{ textAlign: 'center', padding: '20px', color: 'red' }}>{error}</div>}
+
+          {!loading && !error && (
+            payouts.length === 0 ? (
+              <div style={{ textAlign: 'center', color: '#888' }}>Выплат не найдено</div>
+            ) : (
+              <table style={styles.table}>
+                <thead>
+                  <tr>
+                    <th style={styles.th}>Дата</th>
+                    <th style={styles.th}>Комментарий</th>
+                    <th style={{ ...styles.th, textAlign: 'right' }}>Сумма</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {payouts.map(payout => (
+                    <tr key={payout.id}>
+                      <td style={styles.td}>{formatDate(payout.date)}</td>
+                      <td style={styles.td}>
+                        {payout.is_advance && <span style={{ backgroundColor: '#fef3c7', padding: '2px 6px', borderRadius: '4px', fontSize: '12px', marginRight: '5px' }}>Аванс</span>}
+                        {payout.comment || '-'}
+                      </td>
+                      <td style={{ ...styles.td, textAlign: 'right', fontWeight: 500 }}>
+                        {formatCurrency(payout.amount)}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )
+          )}
+        </div>
+        <div style={styles.modalFooter}>
+          <button className="btn btn-secondary" onClick={onClose}>Закрыть</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function EmployeeRow({
   employee,
   month,
-  shiftState,
-  onToggle,
-  onPayoutCreated,
-  onToast,
-  onReloadMonth
+  onShowShifts,
+  onShowPayouts
 }: {
-  employee: Employee;
-  month: string;
-  shiftState: ShiftLoadingState[string];
-  onToggle: (employeeId: number, month: string) => void;
-  onPayoutCreated: (payload: AdminPayoutUpdatePayload) => void;
-  onToast: (message: string, variant?: ToastVariant) => void;
-  onReloadMonth?: (month: string) => Promise<void>;
+  employee: Employee,
+  month: string,
+  onShowShifts: () => void,
+  onShowPayouts: () => void
 }) {
-  const [expanded, setExpanded] = useState(false);
-  const hasDebt = employee.outstanding > 0;
-  const statusBadgeLabel = hasDebt ? 'долг' : 'выплачено';
-  const [isPayoutModalOpen, setPayoutModalOpen] = useState(false);
-  const [isSubmittingPayout, setIsSubmittingPayout] = useState(false);
-  const recentPayouts = employee.recentPayouts ?? [];
-  const payments: HistoryPayment[] = recentPayouts.map((payout) => ({
-    id: payout.id,
-    date: formatDate(payout.date),
-    amount: payout.amount,
-    comment: payout.comment,
-    isAdmin: payout.initiator_role === 'admin',
-    isAdvance: payout.is_advance,
-  }));
+  // Универсальная обработка данных (поддержка разных форматов API)
+  const globalBalance = safeNumber(employee.global_balance ?? employee.globalBalance);
+  const earnings = safeNumber(employee.earnings ?? employee.earned);
+  const payouts = safeNumber(employee.total_payouts ?? employee.paid);
 
-  const handleToggle = () => {
-    const newExpanded = !expanded;
-    setExpanded(newExpanded);
-
-    if (newExpanded && !shiftState?.data && !shiftState?.loading) {
-      onToggle(employee.id, month);
-    }
-  };
-
-  const handleRetry = () => {
-    onToggle(employee.id, month);
-  };
-
-  const handleOpenPayoutModal = (event: React.MouseEvent<HTMLButtonElement>) => {
-    event.stopPropagation();
-    setPayoutModalOpen(true);
-  };
-
-  const handleClosePayoutModal = () => {
-    setPayoutModalOpen(false);
-  };
-
-  const handleCreatePayment = async ({ amount, comment }: { amount: number; comment: string }) => {
-    setIsSubmittingPayout(true);
-    try {
-      const response = await fetch('/api/admin/payouts', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          ...getAuthHeaders()
-        },
-        body: JSON.stringify({
-          userId: employee.id,
-          month,
-          amount,
-          comment: comment || undefined,
-          source: 'admin:reports'
-        })
-      });
-
-      const payload = await response
-        .json()
-        .catch(() => null) as AdminPayoutMutationResponse | null;
-
-      if (!response.ok) {
-        const errorMessage = payload?.error || 'Не удалось сохранить выплату';
-        throw new Error(errorMessage);
-      }
-
-      if (payload?.summary) {
-        onPayoutCreated({
-          employeeId: employee.id,
-          month,
-          summary: payload.summary,
-          history: payload.history
-        });
-      }
-
-      setPayoutModalOpen(false);
-
-      if (payload?.payout) {
-        onToast(`Выплата ${formatCurrency(payload.payout.amount)} сохранена`, 'success');
-      } else {
-        onToast('Выплата сохранена', 'success');
-      }
-
-      if (payload?.overpayment) {
-        onToast(`Переплата ${formatCurrency(payload.overpayment)} перенесена на следующий месяц`, 'info');
-        if (onReloadMonth) {
-          const nextMonth = getNextMonthString(month);
-          onReloadMonth(nextMonth).catch((error) => {
-            console.error('Ошибка обновления следующего месяца:', error);
-          });
-        }
-      }
-    } catch (error) {
-      const message = error instanceof Error ? error.message : 'Не удалось сохранить выплату';
-      onToast(message, 'error');
-    } finally {
-      setIsSubmittingPayout(false);
-    }
-  };
-
-  const handleDeletePayment = async (payoutId: string | number) => {
-    if (!window.confirm('Удалить выплату?')) {
-      return;
-    }
-    try {
-      const response = await fetch(`/api/admin/payouts/${payoutId}`, {
-        method: 'DELETE',
-        headers: getAuthHeaders()
-      });
-
-      const payload = await response
-        .json()
-        .catch(() => null) as AdminPayoutMutationResponse | null;
-      if (!response.ok) {
-        throw new Error(payload?.error || 'Не удалось удалить выплату');
-      }
-
-      if (payload?.summary) {
-        onPayoutCreated({
-          employeeId: employee.id,
-          month,
-          summary: payload.summary,
-          history: payload.history
-        });
-      }
-      onToast('Выплата удалена', 'success');
-    } catch (error) {
-      const message = error instanceof Error ? error.message : 'Не удалось удалить выплату';
-      onToast(message, 'error');
-    } finally {
-      // nothing
-    }
-  };
+  // Имя
+  const name = employee.display_name ||
+    employee.displayName ||
+    employee.name ||
+    (employee.first_name ? `${employee.first_name} ${employee.last_name || ''}`.trim() : '') ||
+    (employee.firstName ? `${employee.firstName} ${employee.lastName || ''}`.trim() : '') ||
+    'Сотрудник';
 
   return (
-    <>
-      <tr
-        className="employee-row hover:bg-gray-50 transition-colors border-b border-gray-100"
-      >
-        <td colSpan={2} className="employee-card-wrapper">
-          <div className="employee-card">
-            <div className="employee-card__header">
-              <h3
-                className="employee-card__name-button"
-                role="button"
-                tabIndex={0}
-                aria-expanded={expanded}
-                onClick={handleToggle}
-                onKeyDown={(event: KeyboardEvent<HTMLHeadingElement>) => {
-                  if (event.key === 'Enter' || event.key === ' ') {
-                    event.preventDefault();
-                    handleToggle();
-                  }
-                }}
-              >
-                {employee.name}
-              </h3>
-              <span className={`employee-status-badge ${hasDebt ? 'employee-status-badge--debt' : 'employee-status-badge--paid'}`}>
-                <span className="employee-status-badge__dot" />
-                {statusBadgeLabel}
-              </span>
-            </div>
-            <div className="employee-card__balance balance-grid">
-              <div className="balance-col">
-                <div className="balance-label">Итого</div>
-                <div className="balance-value employee-card__amount">
-                  {formatCurrency(employee.earned)}
-                </div>
-              </div>
-              <div className="balance-col balance-col--right">
-                <div className="balance-label">Остаток</div>
-                <div className={`balance-value employee-card__amount ${hasDebt ? 'employee-card__amount--danger' : 'employee-card__amount--safe'}`}>
-                  {formatCurrency(employee.outstanding)}
-                </div>
-              </div>
-            </div>
-            <div className="employee-card__actions">
-              <button
-                type="button"
-                className="btn btn-secondary btn-compact"
-                onClick={handleOpenPayoutModal}
-              >
-                Добавить выплату
-              </button>
-            </div>
-            <div className="employee-card__history">
-              <div className="employee-card__history-header">
-                <span>Последние выплаты</span>
-              </div>
-              <PaymentsList payments={payments} onDelete={handleDeletePayment} />
-            </div>
-          </div>
-        </td>
-      </tr>
-      {isPayoutModalOpen && (
-        <tr>
-          <td colSpan={2}>
-            <div className="payout-modal__backdrop" onClick={handleClosePayoutModal}>
-              <div className="payout-modal" onClick={(e) => e.stopPropagation()}>
-                <h3>Новая выплата</h3>
-                <NewPaymentForm
-                  onSubmit={handleCreatePayment}
-                  onCancel={handleClosePayoutModal}
-                  isSubmitting={isSubmittingPayout}
-                />
-              </div>
-            </div>
-          </td>
-        </tr>
-      )}
-      {expanded && (
-        <tr>
-          <td colSpan={2} className="shift-card-cell">
-            {shiftState?.loading && (
-              <div className="text-center py-4 text-gray-600">
-                Загрузка смен...
-              </div>
-            )}
-            {shiftState?.error && (
-              <div className="text-center py-4">
-                <div className="text-red-600 mb-2">Ошибка загрузки</div>
-                <button
-                  onClick={handleRetry}
-                  className="px-3 py-1 bg-blue-500 text-white rounded text-sm hover:bg-blue-600 transition-colors"
-                >
-                  Повторить
-                </button>
-              </div>
-            )}
-            {shiftState?.data && shiftState.data.length === 0 && (
-              <div className="text-center py-4 text-gray-600">
-                Смен нет
-              </div>
-            )}
-            {shiftState?.data && shiftState.data.length > 0 && (
-              <ShiftsTable shifts={shiftState.data} />
-            )}
-          </td>
-        </tr>
-      )}
-    </>
+    <tr className="hide-mobile">
+      <td style={{ ...styles.td, padding: '16px' }}>
+        <div style={{ fontWeight: 'bold', fontSize: '16px' }}>{name}</div>
+        <div style={{ marginTop: '4px', fontSize: '14px' }}>
+          {globalBalance > 0 && <span style={styles.creditText}>Долг: {formatCurrency(globalBalance)}</span>}
+          {globalBalance < 0 && <span style={styles.debtText}>Аванс: {formatCurrency(Math.abs(globalBalance))}</span>}
+          {globalBalance === 0 && <span style={{ color: '#9ca3af' }}>Баланс: 0 ₽</span>}
+        </div>
+      </td>
+      <td style={{ ...styles.td, textAlign: 'right' }}>
+        <div style={{ color: '#6b7280', fontSize: '12px', textTransform: 'uppercase' }}>Заработано</div>
+        <div style={{ fontWeight: 500, fontSize: '15px' }}>{formatCurrency(earnings)}</div>
+      </td>
+      <td style={{ ...styles.td, textAlign: 'right' }}>
+        <div style={{ color: '#6b7280', fontSize: '12px', textTransform: 'uppercase' }}>Выплачено</div>
+        <div style={{ fontWeight: 500, fontSize: '15px' }}>{formatCurrency(payouts)}</div>
+      </td>
+      <td style={{ ...styles.td, textAlign: 'right', width: '200px' }}>
+        <button onClick={onShowShifts} style={{ ...styles.btnSmall, ...styles.btnBlue }}>Смены</button>
+        <button onClick={onShowPayouts} style={{ ...styles.btnSmall, ...styles.btnPurple }}>Выплаты</button>
+      </td>
+    </tr>
   );
 }
 
-// Компонент карточки месяца
-function MonthCard({
-  month,
-  shiftStates,
-  onLoadShifts,
-  onPayoutCreated,
-  onToast,
-  onReloadMonth
+function MobileEmployeeCard({
+  employee,
+  onShowShifts,
+  onShowPayouts
 }: {
-  month: Month;
-  shiftStates: ShiftLoadingState;
-  onLoadShifts: (employeeId: number, monthStr: string) => void;
-  onPayoutCreated: (payload: AdminPayoutUpdatePayload) => void;
-  onToast: (message: string, variant?: ToastVariant) => void;
-  onReloadMonth: (month: string) => Promise<void>;
+  employee: Employee,
+  onShowShifts: () => void,
+  onShowPayouts: () => void
 }) {
-  const statusText = getStatusText(month.status);
-  const outstandingValueClass = [
-    'month-card__totals-value',
-    month.totalOutstanding > 0
-      ? 'month-card__totals-value--danger'
-      : month.totalOutstanding < 0
-        ? 'month-card__totals-value--success'
-        : ''
-  ].join(' ').trim();
+  const globalBalance = safeNumber(employee.global_balance ?? employee.globalBalance);
+  const earnings = safeNumber(employee.earnings ?? employee.earned);
+  const payouts = safeNumber(employee.total_payouts ?? employee.paid);
+
+  const name = employee.display_name ||
+    employee.displayName ||
+    employee.name ||
+    (employee.first_name ? `${employee.first_name} ${employee.last_name || ''}`.trim() : '') ||
+    (employee.firstName ? `${employee.firstName} ${employee.lastName || ''}`.trim() : '') ||
+    'Сотрудник';
 
   return (
-    <div className={`form-section mb-8`}>
-      {/* Заголовок месяца */}
-      <div className="month-card__header">
-        <h2 className="text-2xl font-bold mb-4" style={{ color: 'var(--primary-color)' }}>
-          {formatMonthName(month.month)}
-        </h2>
-        <div className="month-card__status">
-          {getStatusCircle(month.status)}
-          <span>{statusText}</span>
-        </div>
-        <div className="month-card__totals" role="list">
-          <div className="month-card__totals-row" role="listitem">
-            <span className="month-card__totals-label">Заработано</span>
-            <span className="month-card__totals-value">
-              {formatCurrency(month.totalEarned)}
-            </span>
-          </div>
-          <div className="month-card__totals-row" role="listitem">
-            <span className="month-card__totals-label">Выплачено</span>
-            <span className="month-card__totals-value">
-              {formatCurrency(month.totalPaid)}
-            </span>
-          </div>
-          <div className="month-card__totals-row month-card__totals-row--accent" role="listitem">
-            <span className="month-card__totals-label">Остаток</span>
-            <span className={outstandingValueClass}>
-              {formatCurrency(month.totalOutstanding)}
-            </span>
-          </div>
+    <div className="report-card-mobile show-mobile hide-desktop">
+      <div className="report-card-mobile__header">
+        <div className="report-card-mobile__name">{name}</div>
+        <div className="report-card-mobile__balance">
+          {globalBalance > 0 && <span style={styles.creditText}>Долг: {formatCurrency(globalBalance)}</span>}
+          {globalBalance < 0 && <span style={styles.debtText}>Аванс: {formatCurrency(Math.abs(globalBalance))}</span>}
+          {globalBalance === 0 && <span style={{ color: '#9ca3af' }}>Баланс: 0 ₽</span>}
         </div>
       </div>
 
-      {/* Таблица сотрудников */}
-      <div style={{ background: 'var(--background-card)', borderRadius: '10px', boxShadow: '0 4px 8px var(--shadow-light)' }}>
-        <table className="shifts-table shifts-table--employees" style={{ width: '100%' }}>
-          <thead>
-            <tr>
-              <th className="py-4 px-4">Сотрудник</th>
-              <th className="py-4 px-4 text-right">Баланс</th>
-            </tr>
-          </thead>
-          <tbody>
-            {month.employees.map((employee) => {
-              const employeeKey = `${employee.id}-${month.month}`;
-              return (
-                <EmployeeRow
-                  key={employee.id}
-                  employee={employee}
-                  month={month.month}
-                  shiftState={shiftStates[employeeKey]}
-                  onToggle={onLoadShifts}
-                  onPayoutCreated={onPayoutCreated}
-                  onToast={onToast}
-                  onReloadMonth={onReloadMonth}
-                />
-              );
-            })}
-          </tbody>
-        </table>
+      <div className="report-card-mobile__divider" />
+
+      <div className="report-card-mobile__row">
+        <span className="report-card-mobile__label">Заработано:</span>
+        <span className="report-card-mobile__value">{formatCurrency(earnings)}</span>
+      </div>
+
+      <div className="report-card-mobile__row">
+        <span className="report-card-mobile__label">Выплачено:</span>
+        <span className="report-card-mobile__value">{formatCurrency(payouts)}</span>
+      </div>
+
+      <div className="report-card-mobile__actions">
+        <button
+          onClick={onShowShifts}
+          style={{ ...styles.btnSmall, ...styles.btnBlue, flex: 1, margin: 0, padding: '10px' }}
+        >
+          Смены
+        </button>
+        <button
+          onClick={onShowPayouts}
+          style={{ ...styles.btnSmall, ...styles.btnPurple, flex: 1, margin: 0, padding: '10px' }}
+        >
+          Выплаты
+        </button>
       </div>
     </div>
   );
 }
 
-// Основной компонент страницы отчетов
+function MonthCard({
+  monthData,
+  onShowShifts,
+  onShowPayouts
+}: {
+  monthData: MonthData,
+  onShowShifts: (employee: Employee, month: string) => void,
+  onShowPayouts: (employee: Employee) => void
+}) {
+  return (
+    <div style={styles.card}>
+      <div style={styles.cardHeader}>
+        {formatMonthName(monthData.month)}
+      </div>
+
+      {/* Desktop Table */}
+      <table style={{ width: '100%', borderCollapse: 'collapse' }} className="hide-mobile">
+        <thead>
+          <tr>
+            <th style={{ ...styles.th, paddingLeft: '16px' }}>Сотрудник</th>
+            <th style={{ ...styles.th, textAlign: 'right' }}>За месяц</th>
+            <th style={{ ...styles.th, textAlign: 'right' }}>Выплачено</th>
+            <th style={{ ...styles.th, textAlign: 'right' }}>Действия</th>
+          </tr>
+        </thead>
+        <tbody>
+          {monthData.employees.map((employee, idx) => (
+            <EmployeeRow
+              key={employee.user_id || employee.id || idx}
+              employee={employee}
+              month={monthData.month}
+              onShowShifts={() => onShowShifts(employee, monthData.month)}
+              onShowPayouts={() => onShowPayouts(employee)}
+            />
+          ))}
+        </tbody>
+      </table>
+
+      {/* Mobile Cards */}
+      <div className="show-mobile hide-desktop">
+        {monthData.employees.map((employee, idx) => (
+          <MobileEmployeeCard
+            key={employee.user_id || employee.id || idx}
+            employee={employee}
+            onShowShifts={() => onShowShifts(employee, monthData.month)}
+            onShowPayouts={() => onShowPayouts(employee)}
+          />
+        ))}
+      </div>
+    </div>
+  );
+}
+
 export default function ReportsPage() {
   const router = useRouter();
-  const [months, setMonths] = useState<Month[]>([]);
+  const [months, setMonths] = useState<MonthData[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [shiftStates, setShiftStates] = useState<ShiftLoadingState>({});
-  const { toasts, showToast, hideToast } = useToast();
 
-  const handlePayoutUpdate = (payload: AdminPayoutUpdatePayload) => {
-    setMonths(prevMonths => prevMonths.map((monthData) => {
-      if (monthData.month !== payload.month) {
-        return monthData;
-      }
-
-      const updatedEmployees = monthData.employees.map((emp) =>
-        emp.id === payload.employeeId
-          ? {
-            ...emp,
-            earned: payload.summary.earnings,
-            paid: payload.summary.totalPaid,
-            outstanding: payload.summary.remaining,
-            recentPayouts: payload.history ?? emp.recentPayouts
-          }
-          : emp
-      );
-
-      const totalEarned = updatedEmployees.reduce((sum, emp) => sum + emp.earned, 0);
-      const totalPaid = updatedEmployees.reduce((sum, emp) => sum + emp.paid, 0);
-      const totalOutstanding = updatedEmployees.reduce((sum, emp) => sum + emp.outstanding, 0);
-
-      let status = 'open';
-      if (totalOutstanding === 0) {
-        status = 'closed';
-      } else if (totalPaid > 0) {
-        status = 'partial';
-      }
-
-      return {
-        ...monthData,
-        employees: updatedEmployees,
-        totalEarned,
-        totalPaid,
-        totalOutstanding,
-        status
-      };
-    }));
-  };
-
-  // Загрузка основных данных отчетов
-  const loadReports = async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const response = await fetch('/api/reports', { headers: getAuthHeaders() });
-      if (!response.ok) {
-        throw new Error(`Ошибка загрузки отчетов: ${response.status} ${response.statusText}`);
-      }
-
-      const data = await response.json();
-
-      if (Array.isArray(data)) {
-        const typedMonths = data as Month[];
-        // Фильтруем месяцы, оставляя только те, где есть сотрудники с заработком
-        const filteredMonths = typedMonths.filter((month) => {
-          const employees = Array.isArray(month.employees) ? month.employees : [];
-          return employees.some((emp) => emp.earned > 0);
-        });
-
-        setMonths(filteredMonths);
-      } else {
-        setMonths([]);
-      }
-    } catch (err) {
-      console.error('Ошибка загрузки отчетов:', err);
-      setError(err instanceof Error ? err.message : 'Неизвестная ошибка');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const reloadMonthData = async (targetMonth: string) => {
-    try {
-      const response = await fetch(`/api/reports?from=${targetMonth}&to=${targetMonth}`, {
-        headers: getAuthHeaders()
-      });
-      if (!response.ok) {
-        return;
-      }
-      const data = await response.json();
-      if (!Array.isArray(data) || data.length === 0) {
-        return;
-      }
-      const updatedMonth = data[0] as Month;
-      setMonths(prevMonths => {
-        const exists = prevMonths.some(m => m.month === updatedMonth.month);
-        const nextList = exists
-          ? prevMonths.map(m => (m.month === updatedMonth.month ? updatedMonth : m))
-          : [...prevMonths, updatedMonth];
-        return nextList.sort((a, b) => b.month.localeCompare(a.month));
-      });
-    } catch (error) {
-      console.error('Ошибка обновления месяца после переплаты:', error);
-    }
-  };
-
-  // Загрузка смен для конкретного сотрудника
-  const loadShifts = async (employeeId: number, month: string) => {
-    const employeeKey = `${employeeId}-${month}`;
-
-    setShiftStates(prev => ({
-      ...prev,
-      [employeeKey]: { loading: true, error: false, data: null }
-    }));
-
-    try {
-      const response = await fetch(`/api/reports/${employeeId}/shifts?month=${month}`, {
-        headers: getAuthHeaders()
-      });
-      if (!response.ok) {
-        throw new Error('Ошибка загрузки смен');
-      }
-
-      const data = await response.json();
-
-      setShiftStates(prev => ({
-        ...prev,
-        [employeeKey]: { loading: false, error: false, data: data.shifts || [] }
-      }));
-    } catch (err) {
-      console.error('Ошибка загрузки смен:', err);
-      setShiftStates(prev => ({
-        ...prev,
-        [employeeKey]: { loading: false, error: true, data: null }
-      }));
-    }
-  };
+  const [activeShiftsModal, setActiveShiftsModal] = useState<{ employeeId: number, name: string, month: string } | null>(null);
+  const [activePayoutsModal, setActivePayoutsModal] = useState<{ employeeId: number, name: string } | null>(null);
 
   useEffect(() => {
-    loadReports();
+    const fetchReports = async () => {
+      try {
+        const res = await fetch('/api/reports', { headers: getAuthHeaders() });
+        if (!res.ok) throw new Error('Не удалось загрузить отчеты');
+        const data = await res.json();
+
+        // Фильтрация
+        const filtered = Array.isArray(data)
+          ? data.filter((m: any) => m.employees && m.employees.length > 0)
+          : [];
+
+        setMonths(filtered);
+      } catch (err: any) {
+        setError(err.message || 'Ошибка');
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchReports();
   }, []);
 
   if (loading) {
     return (
-      <div className="container">
-        <div className="header">
-          <div className="header-content">
-            <div className="logo">
-              <Image src="/logo.svg" alt="Логотип" width={60} height={60} priority />
-            </div>
-            <div className="header-text">
-              <h1>Отчеты</h1>
-            </div>
-          </div>
-        </div>
-        <div className="content">
-          <div style={{ textAlign: 'center', padding: '40px' }}>
-            <div style={{ color: 'var(--primary-color)', fontWeight: 600 }}>Загрузка отчётов...</div>
-          </div>
-        </div>
+      <div className="container" style={{ padding: '20px' }}>
+        <div className="header"><div className="header-text"><h1>Отчеты</h1></div></div>
+        <div style={{ textAlign: 'center', padding: '40px' }}>Загрузка...</div>
       </div>
     );
   }
 
   if (error) {
     return (
-      <div className="container">
-        <div className="header">
-          <div className="header-content">
-            <div className="logo">
-              <Image src="/logo.svg" alt="Логотип" width={60} height={60} priority />
-            </div>
-            <div className="header-text">
-              <h1>Отчеты</h1>
-            </div>
-          </div>
-        </div>
-        <div className="content">
-          <div style={{ textAlign: 'center' }}>
-            <div style={{ color: '#dc2626', marginBottom: '16px' }}>Ошибка: {error}</div>
-            <button className="btn" onClick={loadReports}>Повторить загрузку</button>
-          </div>
-        </div>
+      <div className="container" style={{ padding: '20px' }}>
+        <div style={{ textAlign: 'center', color: 'red' }}>Ошибка: {error}</div>
       </div>
     );
   }
@@ -776,154 +590,56 @@ export default function ReportsPage() {
           </div>
         </div>
       </div>
+
       <div className="content">
-        <div className="back-section">
-          <button
-            onClick={() => router.push('/admin')}
-            className="btn btn-secondary"
-          >
+        <div style={{ marginBottom: '20px' }}>
+          <button onClick={() => router.push('/admin')} className="btn btn-secondary">
             Назад
           </button>
         </div>
 
         {months.length === 0 ? (
-          <div className="empty-state">
-            <div className="empty-title">Нет данных для отображения</div>
+          <div style={{ textAlign: 'center', padding: '40px', background: 'white', borderRadius: '12px' }}>
+            Нет данных для отображения
           </div>
         ) : (
-          months.map((month) => (
+          months.map(month => (
             <MonthCard
               key={month.month}
-              month={month}
-              shiftStates={shiftStates}
-              onLoadShifts={loadShifts}
-              onPayoutCreated={handlePayoutUpdate}
-              onToast={showToast}
-              onReloadMonth={reloadMonthData}
+              monthData={month}
+              onShowShifts={(emp) => {
+                const id = emp.user_id || emp.id;
+                if (!id) return;
+                const name = emp.display_name || emp.name || emp.first_name || 'Сотрудник';
+                setActiveShiftsModal({ employeeId: id, name, month: month.month });
+              }}
+              onShowPayouts={(emp) => {
+                const id = emp.user_id || emp.id;
+                if (!id) return;
+                const name = emp.display_name || emp.name || emp.first_name || 'Сотрудник';
+                setActivePayoutsModal({ employeeId: id, name });
+              }}
             />
           ))
         )}
       </div>
-      <ToastContainer toasts={toasts} onDismiss={hideToast} />
 
-      <style jsx>{`
-        .back-section {
-          margin-bottom: 20px;
-        }
+      {activeShiftsModal && (
+        <ShiftsModal
+          employeeId={activeShiftsModal.employeeId}
+          employeeName={activeShiftsModal.name}
+          month={activeShiftsModal.month}
+          onClose={() => setActiveShiftsModal(null)}
+        />
+      )}
 
-        .btn {
-          background: linear-gradient(135deg, var(--primary-color) 0%, var(--secondary-color) 100%);
-          color: var(--accent-color);
-          border: none;
-          padding: 12px 24px;
-          border-radius: 8px;
-          font-size: 14px;
-          font-weight: 600;
-          cursor: pointer;
-          transition: all 0.3s ease;
-          box-shadow: 0 4px 15px var(--shadow-medium);
-          text-transform: uppercase;
-          letter-spacing: 0.5px;
-        }
-
-        .btn:hover {
-          transform: translateY(-2px);
-          box-shadow: 0 6px 20px var(--shadow-medium);
-          background: linear-gradient(135deg, var(--primary-light) 0%, var(--secondary-light) 100%);
-        }
-
-        .btn-secondary {
-          background: linear-gradient(135deg, var(--accent-color) 0%, var(--accent-light) 100%);
-          color: var(--primary-color);
-          border: 2px solid var(--primary-color);
-        }
-
-        .btn-secondary:hover {
-          background: linear-gradient(135deg, var(--accent-dark) 0%, var(--accent-color) 100%);
-        }
-
-        :global(.employee-card__actions .btn.btn-compact) {
-          padding: 4px 10px;
-          border-radius: 8px;
-          font-size: 10px;
-          letter-spacing: 0.15px;
-        }
-
-        .employee-card__header {
-          display: flex;
-          justify-content: space-between;
-          align-items: center;
-          margin-bottom: 12px;
-        }
-
-        .employee-card__name-button {
-          cursor: pointer;
-          font-size: 20px;
-          font-weight: 700;
-          color: var(--primary-color);
-          display: inline;
-          line-height: 1.2;
-          margin: 0;
-          padding: 0;
-        }
-
-        .employee-card__name-button:focus-visible {
-          outline: 2px solid rgba(44, 26, 15, 0.4);
-          border-radius: 4px;
-        }
-
-        .employee-card__actions {
-          margin-top: 10px;
-          display: flex;
-          justify-content: flex-end;
-        }
-
-        .employee-card__history {
-          margin-top: 16px;
-          padding-top: 12px;
-          border-top: 1px solid rgba(44, 26, 15, 0.1);
-        }
-
-        .employee-card__history-header {
-          display: flex;
-          justify-content: space-between;
-          align-items: center;
-          font-size: 12px;
-          color: rgba(44, 26, 15, 0.7);
-          margin-bottom: 8px;
-        }
-
-        .payout-modal__backdrop {
-          position: fixed;
-          inset: 0;
-          background: rgba(0,0,0,0.4);
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          padding: 16px;
-          z-index: 1200;
-        }
-
-        .payout-modal {
-          background: #fff;
-          border-radius: 16px;
-          width: min(420px, 100%);
-          padding: 24px;
-          box-shadow: 0 20px 60px rgba(0,0,0,0.2);
-        }
-
-        .payout-modal h3 {
-          margin-bottom: 8px;
-          font-size: 20px;
-          color: var(--primary-color);
-        }
-
-        @media (max-width: 640px) {
-          .payout-modal {
-            padding: 20px;
-          }
-        }
-      `}</style>
+      {activePayoutsModal && (
+        <PayoutsModal
+          employeeId={activePayoutsModal.employeeId}
+          employeeName={activePayoutsModal.name}
+          onClose={() => setActivePayoutsModal(null)}
+        />
+      )}
     </div>
   );
 }

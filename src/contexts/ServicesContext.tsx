@@ -1,6 +1,7 @@
 'use client';
 
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
+import { getAuthHeaders } from '@/lib/auth';
 
 export interface Price {
   id?: number;
@@ -49,12 +50,12 @@ export const ServicesProvider: React.FC<ServicesProviderProps> = ({ children }) 
     try {
       setLoading(true);
       setError(null);
-      
+
       const response = await fetch('/api/prices');
       if (!response.ok) {
         throw new Error(`Ошибка загрузки цен: ${response.status}`);
       }
-      
+
       const data = await response.json();
       setPrices(data);
     } catch (err) {
@@ -70,11 +71,12 @@ export const ServicesProvider: React.FC<ServicesProviderProps> = ({ children }) 
   const addPrice = useCallback(async (newPrice: Omit<Price, 'id'>) => {
     try {
       setError(null);
-      
+
       const response = await fetch('/api/prices', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          ...getAuthHeaders(),
         },
         body: JSON.stringify(newPrice),
       });
@@ -98,11 +100,12 @@ export const ServicesProvider: React.FC<ServicesProviderProps> = ({ children }) 
   const updatePrice = useCallback(async (id: number, updatedPrice: Omit<Price, 'id'>) => {
     try {
       setError(null);
-      
+
       const response = await fetch(`/api/prices/${id}`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
+          ...getAuthHeaders(),
         },
         body: JSON.stringify(updatedPrice),
       });
@@ -126,9 +129,10 @@ export const ServicesProvider: React.FC<ServicesProviderProps> = ({ children }) 
   const deletePrice = useCallback(async (id: number) => {
     try {
       setError(null);
-      
+
       const response = await fetch(`/api/prices?id=${id}`, {
         method: 'DELETE',
+        headers: getAuthHeaders(),
       });
 
       if (!response.ok) {

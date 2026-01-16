@@ -326,7 +326,7 @@ function ShiftsModal({
                                   borderRadius: '6px',
                                   border: '1px solid rgba(74, 43, 27, 0.1)'
                                 }}>
-                                  <span style={{ fontSize: '13px', color: '#666' }}>Путевое парение (П):</span>
+                                  <span style={{ fontSize: '13px', color: '#666' }}>Путевое парение:</span>
                                   <span style={{ fontSize: '13px', fontWeight: 600, color: '#4A2B1B' }}>
                                     {shift.steamBath || 0}
                                   </span>
@@ -339,7 +339,7 @@ function ShiftsModal({
                                   borderRadius: '6px',
                                   border: '1px solid rgba(74, 43, 27, 0.1)'
                                 }}>
-                                  <span style={{ fontSize: '13px', color: '#666' }}>Фирменное парение (Ф):</span>
+                                  <span style={{ fontSize: '13px', color: '#666' }}>Фирменное парение:</span>
                                   <span style={{ fontSize: '13px', fontWeight: 600, color: '#4A2B1B' }}>
                                     {shift.brandSteam || 0}
                                   </span>
@@ -352,7 +352,7 @@ function ShiftsModal({
                                   borderRadius: '6px',
                                   border: '1px solid rgba(74, 43, 27, 0.1)'
                                 }}>
-                                  <span style={{ fontSize: '13px', color: '#666' }}>Ознакомительное (О):</span>
+                                  <span style={{ fontSize: '13px', color: '#666' }}>Ознакомительное:</span>
                                   <span style={{ fontSize: '13px', fontWeight: 600, color: '#4A2B1B' }}>
                                     {shift.introSteam || 0}
                                   </span>
@@ -365,7 +365,7 @@ function ShiftsModal({
                                   borderRadius: '6px',
                                   border: '1px solid rgba(74, 43, 27, 0.1)'
                                 }}>
-                                  <span style={{ fontSize: '13px', color: '#666' }}>Скрабирование (С):</span>
+                                  <span style={{ fontSize: '13px', color: '#666' }}>Скрабирование:</span>
                                   <span style={{ fontSize: '13px', fontWeight: 600, color: '#4A2B1B' }}>
                                     {shift.scrubbing || 0}
                                   </span>
@@ -378,7 +378,7 @@ function ShiftsModal({
                                   borderRadius: '6px',
                                   border: '1px solid rgba(74, 43, 27, 0.1)'
                                 }}>
-                                  <span style={{ fontSize: '13px', color: '#666' }}>Запарник (З):</span>
+                                  <span style={{ fontSize: '13px', color: '#666' }}>Запарник:</span>
                                   <span style={{ fontSize: '13px', fontWeight: 600, color: '#4A2B1B' }}>
                                     {shift.zaparnik || 0}
                                   </span>

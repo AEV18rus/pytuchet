@@ -318,71 +318,92 @@ function ShiftsModal({
                                 gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))',
                                 gap: '10px'
                               }}>
-                                <div style={{
-                                  display: 'flex',
-                                  justifyContent: 'space-between',
-                                  padding: '8px 12px',
-                                  backgroundColor: 'rgba(255, 255, 255, 0.7)',
-                                  borderRadius: '6px',
-                                  border: '1px solid rgba(74, 43, 27, 0.1)'
-                                }}>
-                                  <span style={{ fontSize: '13px', color: '#666' }}>Путевое парение:</span>
-                                  <span style={{ fontSize: '13px', fontWeight: 600, color: '#4A2B1B' }}>
-                                    {shift.steamBath || 0}
-                                  </span>
-                                </div>
-                                <div style={{
-                                  display: 'flex',
-                                  justifyContent: 'space-between',
-                                  padding: '8px 12px',
-                                  backgroundColor: 'rgba(255, 255, 255, 0.7)',
-                                  borderRadius: '6px',
-                                  border: '1px solid rgba(74, 43, 27, 0.1)'
-                                }}>
-                                  <span style={{ fontSize: '13px', color: '#666' }}>Фирменное парение:</span>
-                                  <span style={{ fontSize: '13px', fontWeight: 600, color: '#4A2B1B' }}>
-                                    {shift.brandSteam || 0}
-                                  </span>
-                                </div>
-                                <div style={{
-                                  display: 'flex',
-                                  justifyContent: 'space-between',
-                                  padding: '8px 12px',
-                                  backgroundColor: 'rgba(255, 255, 255, 0.7)',
-                                  borderRadius: '6px',
-                                  border: '1px solid rgba(74, 43, 27, 0.1)'
-                                }}>
-                                  <span style={{ fontSize: '13px', color: '#666' }}>Ознакомительное:</span>
-                                  <span style={{ fontSize: '13px', fontWeight: 600, color: '#4A2B1B' }}>
-                                    {shift.introSteam || 0}
-                                  </span>
-                                </div>
-                                <div style={{
-                                  display: 'flex',
-                                  justifyContent: 'space-between',
-                                  padding: '8px 12px',
-                                  backgroundColor: 'rgba(255, 255, 255, 0.7)',
-                                  borderRadius: '6px',
-                                  border: '1px solid rgba(74, 43, 27, 0.1)'
-                                }}>
-                                  <span style={{ fontSize: '13px', color: '#666' }}>Скрабирование:</span>
-                                  <span style={{ fontSize: '13px', fontWeight: 600, color: '#4A2B1B' }}>
-                                    {shift.scrubbing || 0}
-                                  </span>
-                                </div>
-                                <div style={{
-                                  display: 'flex',
-                                  justifyContent: 'space-between',
-                                  padding: '8px 12px',
-                                  backgroundColor: 'rgba(255, 255, 255, 0.7)',
-                                  borderRadius: '6px',
-                                  border: '1px solid rgba(74, 43, 27, 0.1)'
-                                }}>
-                                  <span style={{ fontSize: '13px', color: '#666' }}>Запарник:</span>
-                                  <span style={{ fontSize: '13px', fontWeight: 600, color: '#4A2B1B' }}>
-                                    {shift.zaparnik || 0}
-                                  </span>
-                                </div>
+                                {(shift.steamBath || 0) > 0 && (
+                                  <div style={{
+                                    display: 'flex',
+                                    justifyContent: 'space-between',
+                                    padding: '8px 12px',
+                                    backgroundColor: 'rgba(255, 255, 255, 0.7)',
+                                    borderRadius: '6px',
+                                    border: '1px solid rgba(74, 43, 27, 0.1)'
+                                  }}>
+                                    <span style={{ fontSize: '13px', color: '#666' }}>Путевое парение:</span>
+                                    <span style={{ fontSize: '13px', fontWeight: 600, color: '#4A2B1B' }}>
+                                      {shift.steamBath}
+                                    </span>
+                                  </div>
+                                )}
+                                {(shift.brandSteam || 0) > 0 && (
+                                  <div style={{
+                                    display: 'flex',
+                                    justifyContent: 'space-between',
+                                    padding: '8px 12px',
+                                    backgroundColor: 'rgba(255, 255, 255, 0.7)',
+                                    borderRadius: '6px',
+                                    border: '1px solid rgba(74, 43, 27, 0.1)'
+                                  }}>
+                                    <span style={{ fontSize: '13px', color: '#666' }}>Фирменное парение:</span>
+                                    <span style={{ fontSize: '13px', fontWeight: 600, color: '#4A2B1B' }}>
+                                      {shift.brandSteam}
+                                    </span>
+                                  </div>
+                                )}
+                                {(shift.introSteam || 0) > 0 && (
+                                  <div style={{
+                                    display: 'flex',
+                                    justifyContent: 'space-between',
+                                    padding: '8px 12px',
+                                    backgroundColor: 'rgba(255, 255, 255, 0.7)',
+                                    borderRadius: '6px',
+                                    border: '1px solid rgba(74, 43, 27, 0.1)'
+                                  }}>
+                                    <span style={{ fontSize: '13px', color: '#666' }}>Ознакомительное:</span>
+                                    <span style={{ fontSize: '13px', fontWeight: 600, color: '#4A2B1B' }}>
+                                      {shift.introSteam}
+                                    </span>
+                                  </div>
+                                )}
+                                {(shift.scrubbing || 0) > 0 && (
+                                  <div style={{
+                                    display: 'flex',
+                                    justifyContent: 'space-between',
+                                    padding: '8px 12px',
+                                    backgroundColor: 'rgba(255, 255, 255, 0.7)',
+                                    borderRadius: '6px',
+                                    border: '1px solid rgba(74, 43, 27, 0.1)'
+                                  }}>
+                                    <span style={{ fontSize: '13px', color: '#666' }}>Скрабирование:</span>
+                                    <span style={{ fontSize: '13px', fontWeight: 600, color: '#4A2B1B' }}>
+                                      {shift.scrubbing}
+                                    </span>
+                                  </div>
+                                )}
+                                {(shift.zaparnik || 0) > 0 && (
+                                  <div style={{
+                                    display: 'flex',
+                                    justifyContent: 'space-between',
+                                    padding: '8px 12px',
+                                    backgroundColor: 'rgba(255, 255, 255, 0.7)',
+                                    borderRadius: '6px',
+                                    border: '1px solid rgba(74, 43, 27, 0.1)'
+                                  }}>
+                                    <span style={{ fontSize: '13px', color: '#666' }}>Запарник:</span>
+                                    <span style={{ fontSize: '13px', fontWeight: 600, color: '#4A2B1B' }}>
+                                      {shift.zaparnik}
+                                    </span>
+                                  </div>
+                                )}
+                                {!((shift.steamBath || 0) > 0 || (shift.brandSteam || 0) > 0 || (shift.introSteam || 0) > 0 || (shift.scrubbing || 0) > 0 || (shift.zaparnik || 0) > 0) && (
+                                  <div style={{
+                                    padding: '8px 12px',
+                                    color: '#888',
+                                    fontSize: '13px',
+                                    gridColumn: '1 / -1',
+                                    textAlign: 'center'
+                                  }}>
+                                    Нет дополнительных услуг
+                                  </div>
+                                )}
                               </div>
                             </div>
                           </td>

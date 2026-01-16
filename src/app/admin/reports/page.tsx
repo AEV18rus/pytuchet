@@ -21,6 +21,11 @@ interface Shift {
   hours: number;
   amount: number;
   masters: number;
+  steamBath?: number;
+  brandSteam?: number;
+  introSteam?: number;
+  scrubbing?: number;
+  zaparnik?: number;
 }
 
 interface Employee {
@@ -213,6 +218,7 @@ function ShiftsModal({
   const [shifts, setShifts] = useState<Shift[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [expandedRows, setExpandedRows] = useState<Set<number>>(new Set());
 
   useEffect(() => {
     const fetchShifts = async () => {
@@ -231,6 +237,18 @@ function ShiftsModal({
     };
     fetchShifts();
   }, [employeeId, month]);
+
+  const toggleRow = (shiftId: number) => {
+    setExpandedRows(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(shiftId)) {
+        newSet.delete(shiftId);
+      } else {
+        newSet.add(shiftId);
+      }
+      return newSet;
+    });
+  };
 
   return (
     <div style={styles.modalBackdrop} onClick={onClose}>
@@ -254,18 +272,123 @@ function ShiftsModal({
                     <th style={styles.th}>Часы</th>
                     <th style={styles.th}>Мастеров</th>
                     <th style={{ ...styles.th, textAlign: 'right' }}>Сумма</th>
+                    <th style={{ ...styles.th, width: '40px', textAlign: 'center' }}></th>
                   </tr>
                 </thead>
                 <tbody>
                   {shifts.map(shift => (
-                    <tr key={shift.id}>
-                      <td style={styles.td}>{formatDate(shift.date)}</td>
-                      <td style={styles.td}>{shift.hours} ч</td>
-                      <td style={styles.td}>{shift.masters}</td>
-                      <td style={{ ...styles.td, textAlign: 'right', fontWeight: 500 }}>
-                        {formatCurrency(shift.amount)}
-                      </td>
-                    </tr>
+                    <>
+                      <tr
+                        key={shift.id}
+                        style={{
+                          cursor: 'pointer',
+                          backgroundColor: expandedRows.has(shift.id) ? 'rgba(74, 43, 27, 0.05)' : 'transparent'
+                        }}
+                        onClick={() => toggleRow(shift.id)}
+                      >
+                        <td style={styles.td}>{formatDate(shift.date)}</td>
+                        <td style={styles.td}>{shift.hours} ч</td>
+                        <td style={styles.td}>{shift.masters}</td>
+                        <td style={{ ...styles.td, textAlign: 'right', fontWeight: 500 }}>
+                          {formatCurrency(shift.amount)}
+                        </td>
+                        <td style={{ ...styles.td, textAlign: 'center', fontSize: '12px', color: '#666' }}>
+                          <span style={{
+                            display: 'inline-block',
+                            transition: 'transform 0.2s ease',
+                            transform: expandedRows.has(shift.id) ? 'rotate(180deg)' : 'rotate(0deg)'
+                          }}>
+                            ▼
+                          </span>
+                        </td>
+                      </tr>
+                      {expandedRows.has(shift.id) && (
+                        <tr key={`${shift.id}-details`}>
+                          <td colSpan={5} style={{
+                            padding: 0,
+                            backgroundColor: 'rgba(74, 43, 27, 0.02)',
+                            borderBottom: '1px solid #eee'
+                          }}>
+                            <div style={{
+                              padding: '15px 20px',
+                              animation: 'slideDown 0.3s ease-out'
+                            }}>
+                              <div style={{
+                                display: 'grid',
+                                gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))',
+                                gap: '10px'
+                              }}>
+                                <div style={{
+                                  display: 'flex',
+                                  justifyContent: 'space-between',
+                                  padding: '8px 12px',
+                                  backgroundColor: 'rgba(255, 255, 255, 0.7)',
+                                  borderRadius: '6px',
+                                  border: '1px solid rgba(74, 43, 27, 0.1)'
+                                }}>
+                                  <span style={{ fontSize: '13px', color: '#666' }}>Путевое парение (П):</span>
+                                  <span style={{ fontSize: '13px', fontWeight: 600, color: '#4A2B1B' }}>
+                                    {shift.steamBath || 0}
+                                  </span>
+                                </div>
+                                <div style={{
+                                  display: 'flex',
+                                  justifyContent: 'space-between',
+                                  padding: '8px 12px',
+                                  backgroundColor: 'rgba(255, 255, 255, 0.7)',
+                                  borderRadius: '6px',
+                                  border: '1px solid rgba(74, 43, 27, 0.1)'
+                                }}>
+                                  <span style={{ fontSize: '13px', color: '#666' }}>Фирменное парение (Ф):</span>
+                                  <span style={{ fontSize: '13px', fontWeight: 600, color: '#4A2B1B' }}>
+                                    {shift.brandSteam || 0}
+                                  </span>
+                                </div>
+                                <div style={{
+                                  display: 'flex',
+                                  justifyContent: 'space-between',
+                                  padding: '8px 12px',
+                                  backgroundColor: 'rgba(255, 255, 255, 0.7)',
+                                  borderRadius: '6px',
+                                  border: '1px solid rgba(74, 43, 27, 0.1)'
+                                }}>
+                                  <span style={{ fontSize: '13px', color: '#666' }}>Ознакомительное (О):</span>
+                                  <span style={{ fontSize: '13px', fontWeight: 600, color: '#4A2B1B' }}>
+                                    {shift.introSteam || 0}
+                                  </span>
+                                </div>
+                                <div style={{
+                                  display: 'flex',
+                                  justifyContent: 'space-between',
+                                  padding: '8px 12px',
+                                  backgroundColor: 'rgba(255, 255, 255, 0.7)',
+                                  borderRadius: '6px',
+                                  border: '1px solid rgba(74, 43, 27, 0.1)'
+                                }}>
+                                  <span style={{ fontSize: '13px', color: '#666' }}>Скрабирование (С):</span>
+                                  <span style={{ fontSize: '13px', fontWeight: 600, color: '#4A2B1B' }}>
+                                    {shift.scrubbing || 0}
+                                  </span>
+                                </div>
+                                <div style={{
+                                  display: 'flex',
+                                  justifyContent: 'space-between',
+                                  padding: '8px 12px',
+                                  backgroundColor: 'rgba(255, 255, 255, 0.7)',
+                                  borderRadius: '6px',
+                                  border: '1px solid rgba(74, 43, 27, 0.1)'
+                                }}>
+                                  <span style={{ fontSize: '13px', color: '#666' }}>Запарник (З):</span>
+                                  <span style={{ fontSize: '13px', fontWeight: 600, color: '#4A2B1B' }}>
+                                    {shift.zaparnik || 0}
+                                  </span>
+                                </div>
+                              </div>
+                            </div>
+                          </td>
+                        </tr>
+                      )}
+                    </>
                   ))}
                 </tbody>
               </table>
@@ -281,6 +404,18 @@ function ShiftsModal({
           <button className="btn btn-secondary" onClick={onClose}>Закрыть</button>
         </div>
       </div>
+      <style jsx>{`
+        @keyframes slideDown {
+          from {
+            opacity: 0;
+            transform: translateY(-10px);
+          }
+          to {
+            opacity: 1;
+            transform: translateY(0);
+          }
+        }
+      `}</style>
     </div>
   );
 }

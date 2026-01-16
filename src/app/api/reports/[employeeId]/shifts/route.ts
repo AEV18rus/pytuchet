@@ -10,6 +10,7 @@ interface ShiftData {
   brandSteam: number;
   introSteam: number;
   scrubbing: number;
+  zaparnik: number;
   masters: number;
   amount: number;
 }
@@ -33,12 +34,12 @@ export async function GET(
 
     // Получаем смены сотрудника за указанный месяц
     const shifts = await getShiftsForUserAndMonth(employeeId, month);
-    
+
     // Получаем информацию о пользователе из отчётов
     const reports = await getMonthlyReportsForAllMasters(month);
     const userReport = reports.find(report => report.user_id === employeeId);
-    const masterName = userReport ? 
-      (userReport.display_name || `${userReport.first_name} ${userReport.last_name || ''}`.trim()) : 
+    const masterName = userReport ?
+      (userReport.display_name || `${userReport.first_name} ${userReport.last_name || ''}`.trim()) :
       'Неизвестный мастер';
 
     // Форматирование данных для новой структуры таблицы
@@ -52,6 +53,7 @@ export async function GET(
         brandSteam: shift.brand_steam || 0,    // Ф
         introSteam: shift.intro_steam || 0,    // О
         scrubbing: shift.scrubbing || 0,       // С
+        zaparnik: shift.zaparnik || 0,         // З
         masters: shift.masters || 1,           // МАСТЕРА
         amount: shift.total,                   // ИТОГО
       };

@@ -176,6 +176,30 @@
     - webhook (продакшн);
   - читает `BOT_TOKEN`, `WEBHOOK_URL`, `USE_WEBHOOK`, `PORT` из `.env`.
 
+### 3.5. Механизм авторизации
+
+Система использует гибридную схему авторизации, сочетающую проверку данных Telegram и сессионные куки.
+
+#### Авторизация через Telegram (Mini App)
+1. **Frontend**: Получает `initData` из объекта `window.Telegram.WebApp`.
+2. **Authentication Request**: Отправляет POST запрос на `/api/auth/telegram` с `initData` в теле.
+3. **Backend Validation**:
+   - Использует библиотеку `@tma.js/init-data-node`.
+   - Проверяет HMAC-SHA256 подпись данных, используя `TELEGRAM_BOT_TOKEN` как секрет.
+   - Поддерживает старый формат (`validate`) и новый формат с `signature` и `bot_id` (`validate3rd`).
+4. **User Sync**: При успехе создает/обновляет пользователя в БД.
+5. **Session**: Устанавливает `HttpOnly` куку `auth_token` и возвращает профиль.
+
+#### Авторизация по логину и паролю
+1. **Login**: Вход по `browser_login` + пароль на `/login`.
+2. **Verification**: Проверка `password_hash` (bcrypt).
+3. **Session**: Установка куки `auth_token`.
+
+#### Проверка доступа (Server-side)
+- `getUserFromRequest` в `src/lib/auth-server.ts`:
+  1. Проверяет `auth_token` в куках.
+  2. Fallback: проверяет заголовок `x-telegram-id`.
+
 ---
 
 ## 4. Нефункциональные требования

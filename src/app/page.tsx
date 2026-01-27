@@ -274,100 +274,104 @@ export default function HomePage() {
             <Link href="/account" className="btn">Личный кабинет</Link>
           </div>
           <UserGreeting />
-          {/* Форма добавления новой смены */}
-          <div className="form-section">
-            <h2>Добавить новую смену</h2>
+          {/* Форма добавления новой смены - ГРУППИРОВКА ПО БЛОКАМ */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '24px', marginBottom: '32px' }}>
 
-            <div className="form-grid">
-              <div className="input-group">
-                <label className="input-label">Дата смены</label>
-                <input
-                  className="input-field"
-                  type="date"
-                  value={newShift.date}
-                  onChange={(e) => setNewShift({ ...newShift, date: e.target.value })}
-                  required
+            {/* Карточка 1: Основные данные смены */}
+            <div className="glass-panel" style={{ marginBottom: 0 }}>
+              <h2 style={{ fontSize: '1.5rem', marginBottom: '20px' }}>Параметры смены</h2>
+              <div className="form-grid">
+                <div className="input-group">
+                  <label className="input-label">Дата</label>
+                  <input
+                    className="input-field"
+                    type="date"
+                    value={newShift.date}
+                    onChange={(e) => setNewShift({ ...newShift, date: e.target.value })}
+                    required
+                  />
+                </div>
+
+                <Stepper
+                  label="Часы работы"
+                  value={newShift.hours}
+                  onChange={(val) => setNewShift({ ...newShift, hours: val })}
+                  step={0.5}
+                  max={24}
+                  price={getPrice('Почасовая ставка')}
+                />
+
+                <Stepper
+                  label="Мастера на смене"
+                  value={newShift.masters}
+                  onChange={(val) => setNewShift({ ...newShift, masters: val })}
+                  min={1}
+                  max={10}
                 />
               </div>
-
-              <Stepper
-                label="Часы работы"
-                value={newShift.hours}
-                onChange={(val) => setNewShift({ ...newShift, hours: val })}
-                step={0.5}
-                max={24}
-                price={getPrice('Почасовая ставка')}
-              />
-
-              <Stepper
-                label="Количество мастеров"
-                value={newShift.masters}
-                onChange={(val) => setNewShift({ ...newShift, masters: val })}
-                min={1}
-                max={10}
-              />
             </div>
 
-            <h3 style={{ color: 'var(--primary-color)', marginBottom: '15px', fontSize: '1.2em', fontWeight: '600' }}>Банные услуги</h3>
-            <div className="services-grid">
-              <Stepper
-                label="Путевое парение"
-                value={newShift.steam_bath}
-                onChange={(val) => setNewShift({ ...newShift, steam_bath: val })}
-                price={getPrice('Путевое парение')}
-              />
-              <Stepper
-                label="Фирменное парение"
-                value={newShift.brand_steam}
-                onChange={(val) => setNewShift({ ...newShift, brand_steam: val })}
-                price={getPrice('Фирменное парение')}
-              />
-              <Stepper
-                label="Ознакомительное"
-                value={newShift.intro_steam}
-                onChange={(val) => setNewShift({ ...newShift, intro_steam: val })}
-                price={getPrice('Ознакомительное парение')}
-              />
-              <Stepper
-                label="Скрабирование"
-                value={newShift.scrubbing}
-                onChange={(val) => setNewShift({ ...newShift, scrubbing: val })}
-                price={getPrice('Скрабирование')}
-              />
-              <Stepper
-                label="Запарник"
-                value={newShift.zaparnik}
-                onChange={(val) => setNewShift({ ...newShift, zaparnik: val })}
-                price={getPrice('Запарник')}
-              />
-            </div>
-
-            <div className="form-footer">
-              <div className="calculation-info">
-                <div className="calculation-total">
-                  Расчетная сумма: {calculateTotal(newShift).toLocaleString()}₽
-                </div>
-                <div className="calculation-details">
-                  Почасовая: {(newShift.hours * getPrice('Почасовая ставка')).toLocaleString()}₽ +
-                  Услуги: {(calculateTotal(newShift) - newShift.hours * getPrice('Почасовая ставка')).toLocaleString()}₽
-                </div>
-              </div>
-              <div style={{ display: 'flex', gap: '15px', alignItems: 'center' }}>
-                <button
-                  className="btn"
-                  onClick={handleAddShift}
-                  disabled={isDemo || !newShift.date || newShift.hours <= 0}
-                >
-                  Добавить смену
-                </button>
-                <button
-                  className="btn"
-                  onClick={() => window.location.href = '/payouts'}
-                >
-                  Выплаты
-                </button>
+            {/* Карточка 2: Услуги */}
+            <div className="glass-panel" style={{ marginBottom: 0 }}>
+              <h2 style={{ fontSize: '1.5rem', marginBottom: '20px' }}>Банные услуги</h2>
+              <div className="services-grid">
+                <Stepper
+                  label="Путевое парение"
+                  value={newShift.steam_bath}
+                  onChange={(val) => setNewShift({ ...newShift, steam_bath: val })}
+                  price={getPrice('Путевое парение')}
+                />
+                <Stepper
+                  label="Фирменное парение"
+                  value={newShift.brand_steam}
+                  onChange={(val) => setNewShift({ ...newShift, brand_steam: val })}
+                  price={getPrice('Фирменное парение')}
+                />
+                <Stepper
+                  label="Ознакомительное"
+                  value={newShift.intro_steam}
+                  onChange={(val) => setNewShift({ ...newShift, intro_steam: val })}
+                  price={getPrice('Ознакомительное парение')}
+                />
+                <Stepper
+                  label="Скрабирование"
+                  value={newShift.scrubbing}
+                  onChange={(val) => setNewShift({ ...newShift, scrubbing: val })}
+                  price={getPrice('Скрабирование')}
+                />
+                <Stepper
+                  label="Запарник"
+                  value={newShift.zaparnik}
+                  onChange={(val) => setNewShift({ ...newShift, zaparnik: val })}
+                  price={getPrice('Запарник')}
+                />
               </div>
             </div>
+
+            {/* Блок итогов и действий */}
+            <div className="glass-panel bg-white/40" style={{ marginBottom: 0, padding: '24px' }}>
+              <div className="form-footer">
+                <div className="calculation-info">
+                  <div className="calculation-total">
+                    Итого за смену: {calculateTotal(newShift).toLocaleString()}₽
+                  </div>
+                  <div className="calculation-details">
+                    Почасовая: {(newShift.hours * getPrice('Почасовая ставка')).toLocaleString()}₽ <br className="md:hidden" />
+                    + Бонус с услуг: {(calculateTotal(newShift) - newShift.hours * getPrice('Почасовая ставка')).toLocaleString()}₽
+                  </div>
+                </div>
+                <div style={{ display: 'flex', gap: '15px', alignItems: 'center', marginTop: '16px' }}>
+                  <button
+                    className="btn w-full md:w-auto text-center justify-center py-4 text-base"
+                    onClick={handleAddShift}
+                    disabled={isDemo || !newShift.date || newShift.hours <= 0}
+                  >
+                    Сохранить смену
+                  </button>
+                </div>
+              </div>
+            </div>
+
           </div>
 
           {/* Список смен */}

@@ -24,7 +24,8 @@ export async function GET(request: NextRequest) {
       globalBalance: data.globalBalance,
       totalEarnings: data.totalEarnings,
       totalPayouts: data.totalPayouts,
-      months: data.months
+      months: data.months,
+      allPayouts: data.allPayouts
     });
   } catch (error) {
     console.error('Ошибка при получении выплат:', error);

@@ -40,6 +40,9 @@ export default function HomePage() {
   // Режим демо: ограничения на добавление и удаление
   const isDemo = user?.role === 'demo';
   const [shifts, setShifts] = useState<Shift[]>([]);
+  const [globalBalance, setGlobalBalance] = useState<number>(0);
+  const [totalEarningsFromApi, setTotalEarningsFromApi] = useState<number>(0);
+  const [totalPayoutsFromApi, setTotalPayoutsFromApi] = useState<number>(0);
   const [prices, setPrices] = useState<Price[]>([]);
   const [loading, setLoading] = useState(true);
   const [expandedRows, setExpandedRows] = useState<Set<number>>(new Set());
@@ -79,12 +82,16 @@ export default function HomePage() {
 
       const authHeaders = getAuthHeaders();
 
-      const [shiftsResponse, pricesResponse] = await Promise.all([
+      const [shiftsResponse, pricesResponse, payoutsResponse] = await Promise.all([
         fetch('/api/shifts', {
           signal: controller.signal,
           headers: authHeaders
         }),
-        fetch('/api/prices', { signal: controller.signal })
+        fetch('/api/prices', { signal: controller.signal }),
+        fetch('/api/payouts', {
+          signal: controller.signal,
+          headers: authHeaders
+        })
       ]);
 
       clearTimeout(timeoutId);
@@ -94,6 +101,19 @@ export default function HomePage() {
         setShifts(shiftsData);
       } else {
         console.error('Ошибка загрузки смен:', shiftsResponse.status);
+      }
+
+      if (payoutsResponse.ok) {
+        const payoutsData = await payoutsResponse.json();
+        // Используем готовые данные из API (глобальный баланс)
+        setGlobalBalance(payoutsData.globalBalance || 0);
+        setTotalEarningsFromApi(payoutsData.totalEarnings || 0);
+        setTotalPayoutsFromApi(payoutsData.totalPayouts || 0);
+      } else {
+        console.error('Ошибка загрузки выплат:', payoutsResponse.status);
+        setGlobalBalance(0);
+        setTotalEarningsFromApi(0);
+        setTotalPayoutsFromApi(0);
       }
 
       if (pricesResponse.ok) {
@@ -110,6 +130,32 @@ export default function HomePage() {
       }
     } finally {
       setLoading(false);
+    }
+  };
+
+  // Обновление данных без таймаута и loading-экрана (для действий пользователя)
+  const refreshData = async () => {
+    try {
+      const authHeaders = getAuthHeaders();
+
+      const [shiftsResponse, payoutsResponse] = await Promise.all([
+        fetch('/api/shifts', { headers: authHeaders }),
+        fetch('/api/payouts', { headers: authHeaders })
+      ]);
+
+      if (shiftsResponse.ok) {
+        const shiftsData = await shiftsResponse.json();
+        setShifts(shiftsData);
+      }
+
+      if (payoutsResponse.ok) {
+        const payoutsData = await payoutsResponse.json();
+        setGlobalBalance(payoutsData.globalBalance || 0);
+        setTotalEarningsFromApi(payoutsData.totalEarnings || 0);
+        setTotalPayoutsFromApi(payoutsData.totalPayouts || 0);
+      }
+    } catch (error) {
+      console.error('Ошибка при обновлении данных:', error);
     }
   };
 
@@ -162,17 +208,17 @@ export default function HomePage() {
       });
 
       if (response.ok) {
-        await loadData(); // Перезагружаем данные
-        // Сброс формы
+        await refreshData(); // Обновляем данные без таймаута
+        // Сброс формы к начальным значениям
         setNewShift({
           date: new Date().toISOString().split('T')[0],
-          hours: 8,
+          hours: 0,
           steam_bath: 0,
           brand_steam: 0,
           intro_steam: 0,
           scrubbing: 0,
           zaparnik: 0,
-          masters: 1
+          masters: 2
         });
       } else {
         const errorData = await response.json();
@@ -196,7 +242,7 @@ export default function HomePage() {
       });
 
       if (response.ok) {
-        await loadData(); // Перезагружаем данные
+        await refreshData(); // Обновляем данные без таймаута
       } else {
         const errorData = await response.json();
         alert(`Ошибка при удалении смены: ${errorData.error || 'Попробуйте еще раз.'}`);
@@ -221,7 +267,6 @@ export default function HomePage() {
 
   // Расчет общей статистики
   const totalHours = shifts.reduce((sum, shift) => sum + shift.hours, 0);
-  const totalEarnings = shifts.reduce((sum, shift) => sum + shift.total, 0);
 
   // Проверка регистрации пользователя (только для Telegram WebApp)
   useEffect(() => {
@@ -232,9 +277,12 @@ export default function HomePage() {
     }
   }, [authLoading, isAuthenticated, user, router]);
 
+  // Загрузка данных только после завершения аутентификации
   useEffect(() => {
-    loadData();
-  }, []);
+    if (!authLoading) {
+      loadData();
+    }
+  }, [authLoading]);
 
   if (loading) {
     return (
@@ -246,33 +294,45 @@ export default function HomePage() {
       </>
     );
   }
+  // Расчет баланса: используем данные из API
+  const currentBalance = globalBalance;
 
   return (
     <>
-
-
-      <div className="container">
-        <div className="header">
-          <div className="header-content">
-            <div className="logo" onClick={() => router.push('/admin')} style={{ cursor: 'pointer' }}>
+      <div className="container" style={{ maxWidth: '1200px', margin: '0 auto', padding: '0px 0 140px 0' }}>
+        <header className="header" style={{
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          marginBottom: '32px',
+          flexWrap: 'wrap',
+          gap: '15px'
+        }}>
+          <div
+            style={{ display: 'flex', alignItems: 'center', gap: '15px', cursor: 'pointer' }}
+            onClick={() => router.push('/admin')}
+            title="Панель администратора"
+          >
+            <div style={{ position: 'relative', width: '50px', height: '50px' }}>
               <Image
                 src="/logo.svg"
-                alt="Логотип"
-                width={120}
-                height={120}
+                alt="Путёвой Учет"
+                fill
+                style={{ objectFit: 'contain' }}
                 priority
               />
             </div>
-            <div className="header-text">
-              <h1>Путёвый Учет</h1>
-            </div>
+            <h1 className="logo-text" style={{ fontSize: '2rem', margin: 0, lineHeight: 1 }}>Путёвой Учет</h1>
           </div>
-        </div>
-
-        <div className="content">
-          <div style={{ display: 'flex', justifyContent: 'flex-start', marginBottom: 20 }}>
+          <div style={{ display: 'flex', gap: '10px' }}>
             <Link href="/account" className="btn">Личный кабинет</Link>
           </div>
+        </header>
+
+        <div className="content">
+          {/* <div style={{ display: 'flex', justifyContent: 'flex-start', marginBottom: 20 }}>
+            <Link href="/account" className="btn">Личный кабинет</Link>
+          </div> */}
           <UserGreeting />
           {/* Форма добавления новой смены - ГРУППИРОВКА ПО БЛОКАМ */}
           <div style={{ display: 'flex', flexDirection: 'column', gap: '24px', marginBottom: '32px' }}>
@@ -349,7 +409,7 @@ export default function HomePage() {
             </div>
 
             {/* Блок итогов и действий */}
-            <div className="glass-panel bg-white/40" style={{ marginBottom: 0, padding: '24px' }}>
+            <div className="glass-panel bg-white/40 desktop-only" style={{ marginBottom: 0, padding: '24px' }}>
               <div className="form-footer">
                 <div className="calculation-info">
                   <div className="calculation-total">
@@ -376,6 +436,21 @@ export default function HomePage() {
 
           {/* Список смен */}
           <div className="shifts-section">
+
+            {/* Карточка финансового статуса (Этап 3.1) */}
+            <div className="balance-card">
+              <div className="balance-info">
+                <div className="balance-label">Мой Баланс</div>
+                {/* Расчетный баланс (Заработано - Выплачено) */}
+                <div className="balance-amount">{currentBalance.toLocaleString()} ₽</div>
+              </div>
+              <div className="balance-actions">
+                <Link href="/payouts" className="balance-btn">
+                  Кошелек/Выплаты
+                </Link>
+              </div>
+            </div>
+
             <h2>История смен</h2>
             {shifts.length === 0 ? (
               <div className="empty-state">
@@ -470,6 +545,22 @@ export default function HomePage() {
               </>
             )}
           </div>
+
+          {/* Стики-футер для мобильных */}
+          <div className="mobile-sticky-footer">
+            <div className="mobile-footer-row">
+              <span className="mobile-total-label">Итого за смену:</span>
+              <span className="mobile-total-value">{calculateTotal(newShift).toLocaleString()}₽</span>
+            </div>
+            <button
+              className="mobile-save-btn"
+              onClick={handleAddShift}
+              disabled={isDemo || !newShift.date || newShift.hours <= 0}
+            >
+              Сохранить смену
+            </button>
+          </div>
+
         </div>
       </div>
     </>

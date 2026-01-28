@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 
 interface StepperProps {
     value: number;
@@ -8,6 +8,7 @@ interface StepperProps {
     step?: number;
     label?: string;
     price?: number;
+    allowManualInput?: boolean; // Разрешить ручной ввод
 }
 
 export default function Stepper({
@@ -17,8 +18,27 @@ export default function Stepper({
     max = 99,
     step = 1,
     label,
-    price
+    price,
+    allowManualInput = true // По умолчанию разрешён
 }: StepperProps) {
+    const [isEditing, setIsEditing] = useState(false);
+    const [inputValue, setInputValue] = useState(String(value));
+    const inputRef = useRef<HTMLInputElement>(null);
+
+    // Синхронизация inputValue с внешним value
+    useEffect(() => {
+        if (!isEditing) {
+            setInputValue(String(value));
+        }
+    }, [value, isEditing]);
+
+    // Автофокус на поле ввода
+    useEffect(() => {
+        if (isEditing && inputRef.current) {
+            inputRef.current.focus();
+            inputRef.current.select();
+        }
+    }, [isEditing]);
 
     const handleDecrement = (e: React.MouseEvent) => {
         e.preventDefault();
@@ -30,6 +50,49 @@ export default function Stepper({
         e.preventDefault();
         const newValue = Math.min(max, Number((value + step).toFixed(1)));
         onChange(newValue);
+    };
+
+    const handleValueClick = () => {
+        if (allowManualInput) {
+            setIsEditing(true);
+            setInputValue(String(value));
+        }
+    };
+
+    const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+        setInputValue(e.target.value);
+    };
+
+    const handleInputBlur = () => {
+        commitValue();
+    };
+
+    const handleInputKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+        if (e.key === 'Enter') {
+            commitValue();
+        } else if (e.key === 'Escape') {
+            setIsEditing(false);
+            setInputValue(String(value));
+        }
+    };
+
+    const commitValue = () => {
+        setIsEditing(false);
+        const parsed = parseFloat(inputValue.replace(',', '.'));
+
+        if (isNaN(parsed)) {
+            setInputValue(String(value));
+            return;
+        }
+
+        // Ограничиваем значение в пределах min-max
+        const clamped = Math.max(min, Math.min(max, parsed));
+        // Округляем до шага
+        const rounded = Math.round(clamped / step) * step;
+        const final = Number(rounded.toFixed(1));
+
+        onChange(final);
+        setInputValue(String(final));
     };
 
     return (
@@ -55,9 +118,26 @@ export default function Stepper({
                     −
                 </button>
 
-                <div className="stepper-value">
-                    {value}
-                </div>
+                {isEditing ? (
+                    <input
+                        ref={inputRef}
+                        type="text"
+                        inputMode="decimal"
+                        className="stepper-input"
+                        value={inputValue}
+                        onChange={handleInputChange}
+                        onBlur={handleInputBlur}
+                        onKeyDown={handleInputKeyDown}
+                    />
+                ) : (
+                    <div
+                        className={`stepper-value ${allowManualInput ? 'stepper-value--clickable' : ''}`}
+                        onClick={handleValueClick}
+                        title={allowManualInput ? 'Нажмите для ручного ввода' : undefined}
+                    >
+                        {value}
+                    </div>
+                )}
 
                 <button
                     onClick={handleIncrement}

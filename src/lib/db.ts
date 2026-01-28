@@ -2163,6 +2163,7 @@ export async function getPayoutsDataWithGlobalBalance(userId: number): Promise<{
   totalEarnings: number;
   totalPayouts: number;
   months: any[];
+  allPayouts: any[];
 }> {
   try {
     // Получаем глобальные суммы
@@ -2248,7 +2249,8 @@ export async function getPayoutsDataWithGlobalBalance(userId: number): Promise<{
       globalBalance,
       totalEarnings,
       totalPayouts,
-      months: monthsData
+      months: monthsData,
+      allPayouts // Все выплаты для модального окна истории
     };
   } catch (error) {
     console.error('Ошибка при получении данных о выплатах с глобальным балансом:', error);

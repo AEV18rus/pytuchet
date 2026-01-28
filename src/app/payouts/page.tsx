@@ -68,6 +68,7 @@ export default function PayoutsPage() {
   const { user: authUser } = useTelegramAuth();
   const [user, setUser] = useState<User | null>(null);
   const [months, setMonths] = useState<MonthData[]>([]);
+  const [allPayoutsForHistory, setAllPayoutsForHistory] = useState<Payout[]>([]);
   const [globalBalance, setGlobalBalance] = useState<number>(0);
   const [totalEarnings, setTotalEarnings] = useState<number>(0);
   const [totalPayouts, setTotalPayouts] = useState<number>(0);
@@ -77,11 +78,11 @@ export default function PayoutsPage() {
   const [showHistoryModal, setShowHistoryModal] = useState(false);
   const [modalData, setModalData] = useState({
     amount: '',
-    date: '',
+    date: new Date().toISOString().split('T')[0],
     comment: ''
   });
   const [expandedMonths, setExpandedMonths] = useState<Set<string>>(new Set());
-  const [selectedYear, setSelectedYear] = useState<number>(2025);
+  const [selectedYear, setSelectedYear] = useState<number>(new Date().getFullYear());
   const [isManualInput, setIsManualInput] = useState<boolean>(false);
   const [manualYear, setManualYear] = useState<string>('');
 
@@ -174,10 +175,13 @@ export default function PayoutsPage() {
       setTotalEarnings(data.totalEarnings || 0);
       setTotalPayouts(data.totalPayouts || 0);
 
-      // API возвращает объект с полем months
+      // API возвращает объект с полем months и allPayouts
       const monthsData = data.months || [];
 
-      // Фильтруем данные по выбранному году
+      // Сохраняем все выплаты для модального окна истории
+      setAllPayoutsForHistory(data.allPayouts || []);
+
+      // Фильтруем данные по выбранному году для отображения на странице
       const filteredData = monthsData.filter((monthData: MonthData) => {
         // Парсим год из строки формата "YYYY-MM"
         const monthYear = parseInt(monthData.month.split('-')[0]);
@@ -225,7 +229,7 @@ export default function PayoutsPage() {
       }
 
       setShowModal(false);
-      setModalData({ amount: '', date: '', comment: '' });
+      setModalData({ amount: '', date: new Date().toISOString().split('T')[0], comment: '' });
       fetchPayouts();
     } catch (err) {
       console.error('Ошибка добавления выплаты:', err);
@@ -638,17 +642,19 @@ export default function PayoutsPage() {
                   </div>
 
                   <div className="history-list-scroll">
-                    {months.flatMap(m => m.payouts)
-                      .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
+                    {allPayoutsForHistory
+                      .filter((p: Payout) => !p.reversed_at)
+                      .sort((a: Payout, b: Payout) => new Date(b.date).getTime() - new Date(a.date).getTime())
                       .length === 0 ? (
-                      <p className="no-data">Нет истории выплат за этот период</p>
+                      <p className="no-data">Нет истории выплат</p>
                     ) : (
-                      months.flatMap(m => m.payouts)
-                        .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
-                        .map((payout) => (
+                      allPayoutsForHistory
+                        .filter((p: Payout) => !p.reversed_at)
+                        .sort((a: Payout, b: Payout) => new Date(b.date).getTime() - new Date(a.date).getTime())
+                        .map((payout: Payout) => (
                           <div
                             key={payout.id}
-                            className={`history-item ${payout.reversed_at ? 'history-item--reversed' : ''}`}
+                            className="history-item"
                           >
                             <div className="history-info">
                               <div className="history-amount">{payout.amount.toLocaleString()} ₽</div>
@@ -657,23 +663,15 @@ export default function PayoutsPage() {
                                 {payout.is_advance && <span className="advance-badge">АВАНС</span>}
                                 {payout.comment && ` • ${payout.comment}`}
                               </div>
-                              {payout.reversed_at && (
-                                <div className="history-reversed-note">
-                                  Отменено {formatDateTime(payout.reversed_at)}
-                                  {payout.reversal_reason && ` • ${payout.reversal_reason}`}
-                                </div>
-                              )}
                             </div>
-                            {!payout.reversed_at && (
-                              <button
-                                onClick={() => handleDeletePayout(payout.id)}
-                                className="delete-btn"
-                                disabled={authUser?.role === 'demo'}
-                                title="Удалить выплату"
-                              >
-                                <img src="/trash.svg" alt="Удалить" width="28" height="28" />
-                              </button>
-                            )}
+                            <button
+                              onClick={() => handleDeletePayout(payout.id)}
+                              className="delete-btn"
+                              disabled={authUser?.role === 'demo'}
+                              title="Удалить выплату"
+                            >
+                              <img src="/trash.svg" alt="Удалить" width="28" height="28" />
+                            </button>
                           </div>
                         ))
                     )}
@@ -1398,15 +1396,17 @@ export default function PayoutsPage() {
         }
 
         .btn-secondary {
-          background: var(--background-card);
-          color: var(--primary-color);
-          border: 2px solid var(--border-light);
+          background: #ffffff !important;
+          color: #7a3e2d !important;
+          border: 2px solid #7a3e2d;
+          font-weight: 600;
         }
 
         .btn-secondary:hover {
-          background: var(--primary-color);
-          color: var(--background-card);
-          border-color: var(--primary-color);
+          background: #7a3e2d !important;
+          color: #ffffff !important;
+          transform: translateY(-2px);
+          box-shadow: 0 4px 12px rgba(122, 62, 45, 0.2);
         }
 
         .delete-btn {

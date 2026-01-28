@@ -124,7 +124,7 @@ export default function AdminPage() {
     <div className="container">
       <div className="header">
         <div className="header-content">
-          <div 
+          <div
             className="logo"
             onClick={() => router.push('/')}
             style={{ cursor: 'pointer' }}
@@ -149,59 +149,59 @@ export default function AdminPage() {
           </div>
         )}
         {!showReports && !showUserManagement ? (
-           <div className="admin-section">
-             <div className="admin-grid">
-               <button 
-                 onClick={() => router.push('/pricing')}
-                 className="admin-card admin-button"
-               >
-                 <div className="card-content">
-                   <h3>Прайс-лист</h3>
-                   <p>Управление ценами на услуги</p>
-                 </div>
-               </button>
+          <div className="admin-section">
+            <div className="admin-grid">
+              <button
+                onClick={() => router.push('/pricing')}
+                className="admin-card admin-button"
+              >
+                <div className="card-content">
+                  <h3>Прайс-лист</h3>
+                  <p>Управление ценами на услуги</p>
+                </div>
+              </button>
 
-               <button 
-                 onClick={() => router.push('/admin/reports')}
-                 className="admin-card admin-button"
-               >
-                 <div className="card-content">
-                   <h3>Отчеты</h3>
-                   <p>Отчеты по мастерам с детализацией смен</p>
-                 </div>
-               </button>
+              <button
+                onClick={() => router.push('/admin/reports')}
+                className="admin-card admin-button"
+              >
+                <div className="card-content">
+                  <h3>Отчеты</h3>
+                  <p>Отчеты по мастерам с детализацией смен</p>
+                </div>
+              </button>
 
-               <button 
-                 onClick={() => setShowUserManagement(true)}
-                 className="admin-card admin-button"
-               >
-                 <div className="card-content">
-                   <h3>Управление пользователями</h3>
-                   <p>Просмотр, блокировка и удаление пользователей</p>
-                 </div>
-               </button>
+              <button
+                onClick={() => setShowUserManagement(true)}
+                className="admin-card admin-button"
+              >
+                <div className="card-content">
+                  <h3>Управление пользователями</h3>
+                  <p>Просмотр, блокировка и удаление пользователей</p>
+                </div>
+              </button>
 
-               <button className="admin-card admin-button" disabled>
-                 <div className="card-content">
-                   <h3>Настройки</h3>
-                   <p>Конфигурация системы</p>
-                 </div>
-               </button>
+              <button className="admin-card admin-button" disabled>
+                <div className="card-content">
+                  <h3>Настройки</h3>
+                  <p>Конфигурация системы</p>
+                </div>
+              </button>
 
-               <button 
-                 onClick={() => router.push('/admin/logs')}
-                 className="admin-card admin-button"
-                 disabled={true}
-               >
-                 <div className="card-content">
-                   <h3>Системные логи</h3>
-                   <p>Просмотр логов</p>
-                 </div>
-               </button>
-             </div>
+              <button
+                onClick={() => router.push('/admin/logs')}
+                className="admin-card admin-button"
+                disabled={true}
+              >
+                <div className="card-content">
+                  <h3>Системные логи</h3>
+                  <p>Просмотр логов</p>
+                </div>
+              </button>
+            </div>
 
             <div className="back-section">
-              <button 
+              <button
                 onClick={() => router.push('/')}
                 className="btn btn-secondary"
               >
@@ -221,7 +221,7 @@ export default function AdminPage() {
           <div className="reports-section">
             <div className="reports-header">
               <h2>Отчеты по сменам</h2>
-              <button 
+              <button
                 onClick={() => setShowReports(false)}
                 className="btn btn-secondary"
               >
@@ -276,22 +276,22 @@ export default function AdminPage() {
                 )}
               </div>
             )}
-           </div>
-         ) : (
-           <div className="user-management-section">
-             <div className="reports-header">
-               <h2>Управление пользователями</h2>
-               <button 
-                 onClick={() => setShowUserManagement(false)}
-                 className="btn btn-secondary"
-               >
-                 Назад к панели
-               </button>
-             </div>
-             <UserManagement readonly={userRole === 'demo'} />
-           </div>
-         )}
-       </div>
+          </div>
+        ) : (
+          <div className="user-management-section">
+            <div className="reports-header">
+              <h2>Управление пользователями</h2>
+              <button
+                onClick={() => setShowUserManagement(false)}
+                className="btn btn-secondary"
+              >
+                Назад к панели
+              </button>
+            </div>
+            <UserManagement readonly={userRole === 'demo'} />
+          </div>
+        )}
+      </div>
 
       <style jsx>{`
         .container {
@@ -463,13 +463,14 @@ export default function AdminPage() {
         }
 
         .btn-secondary {
-          background: linear-gradient(135deg, var(--accent-color) 0%, var(--accent-light) 100%);
+          background: var(--bg-main);
           color: var(--primary-color);
           border: 2px solid var(--primary-color);
         }
 
         .btn-secondary:hover {
-          background: linear-gradient(135deg, var(--accent-dark) 0%, var(--accent-color) 100%);
+          background: var(--accent-color);
+          color: #FFFFFF;
         }
 
         .reports-section {

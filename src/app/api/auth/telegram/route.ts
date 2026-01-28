@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import crypto from 'crypto';
-import { getUserByTelegramId, createUser, updateUser } from '@/lib/db';
+import * as userRepo from '@/repositories/user.repository';
 import { AuthenticatedUser } from '@/lib/auth-server';
 import { addLog } from '@/lib/logging';
 import { validate, validate3rd } from '@tma.js/init-data-node';
@@ -40,9 +40,9 @@ function debugTelegramSignature(initDataRaw: string, botTokenRaw: string, expect
   const params = new URLSearchParams(initData);
   const hasSignature = params.has('signature');
   const hasHash = params.has('hash');
-  
-  addLog('info', '🔍 Режим проверки в debug', { 
-    hasSignature, 
+
+  addLog('info', '🔍 Режим проверки в debug', {
+    hasSignature,
     hasHash,
     mode: hasSignature ? 'validate3rd (новый)' : 'validate (старый)'
   });
@@ -89,37 +89,37 @@ function debugTelegramSignature(initDataRaw: string, botTokenRaw: string, expect
 function verifyTelegramWebAppData(initData: string, botToken: string): any {
   // Логируем исходные данные
   addLog('info', '🧾 RAW initData FULL STRING', { initData: initData });
-  
+
   const params = new URLSearchParams(initData);
   addLog('info', '🔑 ALL KEYS from initData', { keys: Array.from(params.keys()) });
-  
+
   // Проверяем наличие signature для определения режима проверки
   const hasSignature = params.has('signature');
   const hasHash = params.has('hash');
-  
-  addLog('info', '🔍 Режим проверки подписи', { 
-    hasSignature, 
+
+  addLog('info', '🔍 Режим проверки подписи', {
+    hasSignature,
     hasHash,
     mode: hasSignature ? 'validate3rd (новый)' : 'validate (старый)'
   });
-  
+
   try {
     if (hasSignature) {
       // Новый режим: используем validate3rd с bot_id
       const botId = getBotIdFromToken(botToken);
       addLog('info', '🤖 Используем validate3rd', { botId });
-      
+
       // validate3rd проверяет подпись и не возвращает данные
       validate3rd(initData, botId);
-      
+
       addLog('info', '✅ validate3rd успешно');
     } else {
       // Старый режим: используем validate с bot token
       addLog('info', '🔑 Используем validate (старый режим)');
-      
+
       // validate проверяет подпись и не возвращает данные
       validate(initData, botToken);
-      
+
       addLog('info', '✅ validate успешно');
     }
   } catch (error) {
@@ -129,10 +129,10 @@ function verifyTelegramWebAppData(initData: string, botToken: string): any {
       hasHash,
       initDataLength: initData.length
     });
-    
+
     throw new Error('Invalid signature');
   }
-  
+
   // После успешной проверки парсим данные пользователя
   const userParam = params.get('user');
   if (!userParam) {
@@ -160,12 +160,12 @@ export async function POST(request: NextRequest) {
     const requestIP = request.headers.get('x-forwarded-for') || request.headers.get('x-real-ip') || 'unknown';
     const userAgent = request.headers.get('user-agent') || 'unknown';
     const timestamp = new Date().toISOString();
-    
+
     console.log('💡 Дополнительная информация:');
     console.log('Request IP:', requestIP);
     console.log('User agent:', userAgent);
     console.log('Timestamp:', timestamp);
-    
+
     const body = await request.json();
     const { initData } = body;
 
@@ -179,7 +179,7 @@ export async function POST(request: NextRequest) {
       ip: requestIP,
       timestamp
     });
-    
+
     if (!initData) {
       console.log('Auth failed: initData отсутствует');
       addLog('error', 'Ошибка аутентификации: initData отсутствует', {
@@ -193,31 +193,31 @@ export async function POST(request: NextRequest) {
         { status: 400 }
       );
     }
-    
+
     // Получаем токен бота из переменных окружения
     const botToken = process.env.TELEGRAM_BOT_TOKEN?.trim();
     if (!botToken) {
       console.log('Auth failed: TELEGRAM_BOT_TOKEN не установлен');
       return NextResponse.json({ error: 'Ошибка конфигурации сервера' }, { status: 500 });
     }
-    
+
     console.log('Token ends with:', JSON.stringify(botToken.slice(-3)));
-    
+
     // Валидация формата токена Telegram (должен быть вида: 123456789:ABC-DEF1234ghIkl-zyx57W2v1u123ew11)
     if (!/^\d+:[\w-]{35}$/.test(botToken)) {
-      addLog('error', 'Некорректный формат TELEGRAM_BOT_TOKEN', { 
+      addLog('error', 'Некорректный формат TELEGRAM_BOT_TOKEN', {
         tokenLength: botToken.length,
-        tokenFormat: botToken.replace(/:.+/, ':***') 
+        tokenFormat: botToken.replace(/:.+/, ':***')
       });
       return NextResponse.json({ error: 'Ошибка конфигурации сервера' }, { status: 500 });
     }
-    
+
     // 🔍 ДИАГНОСТИКА: проверяем все возможные комбинации
     const allParams = new URLSearchParams(initData);
     const expectedHash = allParams.get('hash') || '';
     console.log('🔍 Запуск диагностики Telegram подписи...');
     debugTelegramSignature(initData, botToken, expectedHash);
-    
+
     // Проверяем подпись Telegram
     let userData;
     try {
@@ -230,20 +230,20 @@ export async function POST(request: NextRequest) {
       console.log('Auth failed:', error instanceof Error ? error.message : 'Unknown error');
       return NextResponse.json({ error: 'Неверная подпись Telegram' }, { status: 401 });
     }
-    
+
     // Проверяем, существует ли пользователь
-    let user = await getUserByTelegramId(userData.id);
-    
+    let user = await userRepo.getUserByTelegramId(userData.id);
+
     if (user) {
       // Обновляем только базовые данные Telegram, если они изменились
       // НЕ затрагиваем display_name и другие пользовательские настройки
-      const needsUpdate = 
+      const needsUpdate =
         user.first_name !== userData.first_name ||
         user.last_name !== userData.last_name ||
         user.username !== userData.username;
-      
+
       if (needsUpdate) {
-        const updatedUser = await updateUser(userData.id, {
+        const updatedUser = await userRepo.updateUser(userData.id, {
           first_name: userData.first_name,
           last_name: userData.last_name,
           username: userData.username
@@ -253,7 +253,7 @@ export async function POST(request: NextRequest) {
       }
     } else {
       // Создаем нового пользователя
-      user = await createUser({
+      user = await userRepo.createUser({
         telegram_id: userData.id,
         first_name: userData.first_name,
         last_name: userData.last_name,
@@ -261,9 +261,9 @@ export async function POST(request: NextRequest) {
         // display_name будет null для новых пользователей
       });
     }
-    
+
     console.log('Auth success for user:', user.telegram_id);
-    
+
     addLog('info', 'Успешная аутентификация Telegram', {
       userId: user.id,
       telegramId: user.telegram_id,
@@ -272,7 +272,7 @@ export async function POST(request: NextRequest) {
       userAgent,
       timestamp
     });
-    
+
     // Возвращаем данные пользователя
     return NextResponse.json({
       success: true,
@@ -287,15 +287,15 @@ export async function POST(request: NextRequest) {
         updated_at: user.updated_at
       }
     });
-    
+
   } catch (error) {
     console.error('Ошибка авторизации:', error);
-    
+
     addLog('error', 'Ошибка аутентификации Telegram', {
       error: error instanceof Error ? error.message : String(error),
       stack: error instanceof Error ? error.stack : undefined
     });
-    
+
     return NextResponse.json({ error: 'Ошибка сервера' }, { status: 500 });
   }
 }

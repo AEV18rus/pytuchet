@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getUserByTelegramId, getUserByBrowserLogin, updateUser } from '@/lib/db';
+import * as userRepo from '@/repositories/user.repository';
 import { hashPassword, verifyPassword } from '@/lib/password';
 
 export async function POST(request: NextRequest) {
@@ -36,13 +36,13 @@ export async function POST(request: NextRequest) {
     }
 
     // Проверяем пользователя
-    const user = await getUserByTelegramId(telegramIdNumber);
+    const user = await userRepo.getUserByTelegramId(telegramIdNumber);
     if (!user) {
       return NextResponse.json({ error: 'Пользователь не найден' }, { status: 404 });
     }
 
     // Проверяем уникальность логина (если логин принадлежит другому пользователю)
-    const existingByLogin = await getUserByBrowserLogin(login);
+    const existingByLogin = await userRepo.getUserByBrowserLogin(login);
     if (existingByLogin && existingByLogin.id !== user.id) {
       return NextResponse.json({ error: 'Логин уже занят' }, { status: 409 });
     }
@@ -63,7 +63,7 @@ export async function POST(request: NextRequest) {
     const nowIso = new Date().toISOString();
 
     // Обновляем пользователя
-    const updated = await updateUser(telegramIdNumber, {
+    const updated = await userRepo.updateUser(telegramIdNumber, {
       browser_login: login,
       password_hash: passwordHash,
       password_set_at: nowIso,

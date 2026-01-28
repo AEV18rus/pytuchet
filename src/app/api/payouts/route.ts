@@ -1,9 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
-import {
-  getPayoutsDataWithGlobalBalance,
-  createSimplePayout,
-  getUserBalance
-} from '@/lib/db';
+import { reportService } from '@/services/report.service';
+import { payoutService } from '@/services/payout.service';
+import { balanceService } from '@/services/balance.service';
 import { getUserFromRequest, requireMasterForMutation } from '@/lib/auth-server';
 import { ensureDatabaseInitialized } from '@/lib/global-init';
 
@@ -18,7 +16,7 @@ export async function GET(request: NextRequest) {
     }
 
     // Используем новую функцию с глобальным балансом
-    const data = await getPayoutsDataWithGlobalBalance(user.id!);
+    const data = await reportService.getPayoutsDataWithGlobalBalance(user.id!);
 
     return NextResponse.json({
       globalBalance: data.globalBalance,
@@ -71,11 +69,11 @@ export async function POST(request: NextRequest) {
     }
 
     // Получаем текущий баланс для информации
-    const balanceBefore = await getUserBalance(user.id!);
+    const balanceBefore = await balanceService.getUserBalance(user.id!);
 
     // Создаем простую выплату
     console.log('💰 Создаем выплату...');
-    const payout = await createSimplePayout({
+    const payout = await payoutService.createSimplePayout({
       user_id: user.id!,
       amount: parseFloat(amount),
       date,
@@ -84,7 +82,7 @@ export async function POST(request: NextRequest) {
     console.log('✅ Выплата создана:', payout);
 
     // Получаем новый баланс
-    const balanceAfter = await getUserBalance(user.id!);
+    const balanceAfter = await balanceService.getUserBalance(user.id!);
 
     return NextResponse.json({
       payout,

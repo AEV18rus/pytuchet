@@ -1,14 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { ensureDatabaseInitialized } from '@/lib/global-init';
 import { requireAdmin } from '@/lib/auth-server';
-import {
-  createSimplePayout,
-  getUserById,
-  getUserBalance,
-  getTotalEarnings,
-  getTotalPayouts,
-  getAllPayoutsForUser
-} from '@/lib/db';
+import { balanceService } from '@/services/balance.service';
+import { payoutService } from '@/services/payout.service';
+import { reportService } from '@/services/report.service';
+import * as userRepo from '@/repositories/user.repository';
 
 export async function GET(request: NextRequest) {
   try {
@@ -25,7 +21,7 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    const payouts = await getAllPayoutsForUser(Number(userId));
+    const payouts = await reportService.getAllPayoutsForUser(Number(userId));
 
     return NextResponse.json({ payouts });
   } catch (error) {
@@ -64,7 +60,7 @@ export async function POST(request: NextRequest) {
       ? date
       : new Date().toISOString().split('T')[0];
 
-    const targetUser = await getUserById(Number(userId));
+    const targetUser = await userRepo.getUserById(Number(userId));
     if (!targetUser) {
       return NextResponse.json(
         { error: 'Пользователь не найден' },
@@ -73,10 +69,10 @@ export async function POST(request: NextRequest) {
     }
 
     // Получаем баланс до выплаты
-    const balanceBefore = await getUserBalance(Number(userId));
+    const balanceBefore = await balanceService.getUserBalance(Number(userId));
 
     // Создаем простую выплату
-    const payout = await createSimplePayout({
+    const payout = await payoutService.createSimplePayout({
       user_id: Number(userId),
       amount: parsedAmount,
       date: payoutDate,
@@ -88,12 +84,12 @@ export async function POST(request: NextRequest) {
     });
 
     // Получаем данные после выплаты
-    const totalEarnings = await getTotalEarnings(Number(userId));
-    const totalPayouts = await getTotalPayouts(Number(userId));
+    const totalEarnings = await balanceService.getTotalEarnings(Number(userId));
+    const totalPayouts = await balanceService.getTotalPayouts(Number(userId));
     const balanceAfter = totalEarnings - totalPayouts;
 
     // Получаем последние 5 выплат для истории
-    const allPayouts = await getAllPayoutsForUser(Number(userId));
+    const allPayouts = await reportService.getAllPayoutsForUser(Number(userId));
     const history = allPayouts.slice(0, 5);
 
     return NextResponse.json({

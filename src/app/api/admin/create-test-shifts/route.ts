@@ -1,5 +1,7 @@
 import { NextResponse } from 'next/server';
-import { addShift, getPrices, getUserByTelegramId } from '@/lib/db';
+import * as shiftRepo from '@/repositories/shift.repository';
+import * as priceRepo from '@/repositories/price.repository';
+import * as userRepo from '@/repositories/user.repository';
 
 export async function POST(request: Request) {
   try {
@@ -10,7 +12,7 @@ export async function POST(request: Request) {
     const telegramId = user_telegram_id || 87654321;
 
     // Получаем пользователя
-    const user = await getUserByTelegramId(telegramId);
+    const user = await userRepo.getUserByTelegramId(telegramId);
     if (!user) {
       return NextResponse.json(
         { error: `Пользователь с telegram_id ${telegramId} не найден` },
@@ -19,7 +21,7 @@ export async function POST(request: Request) {
     }
 
     // Получаем текущие цены
-    const prices = await getPrices();
+    const prices = await priceRepo.getPrices();
     const priceMapping: { [key: string]: string } = {
       'Почасовая ставка': 'hourly_rate',
       'Путевое парение': 'steam_bath_price',
@@ -28,7 +30,7 @@ export async function POST(request: Request) {
       'Скрабирование': 'scrubbing_price',
       'Запарник': 'zaparnik_price'
     };
-    
+
     const currentPrices: { [key: string]: number } = {
       hourly_rate: 0,
       steam_bath_price: 0,
@@ -37,7 +39,7 @@ export async function POST(request: Request) {
       scrubbing_price: 0,
       zaparnik_price: 0
     };
-    
+
     // Заполняем текущие цены
     prices.forEach(price => {
       const key = priceMapping[price.name];
@@ -49,11 +51,11 @@ export async function POST(request: Request) {
     // Создаем тестовые смены за последние 30 дней
     const testShifts = [];
     const today = new Date();
-    
+
     for (let i = 0; i < 15; i++) {
       const shiftDate = new Date(today);
       shiftDate.setDate(today.getDate() - i * 2); // Каждые 2 дня
-      
+
       const hours = 8 + Math.floor(Math.random() * 4); // 8-11 часов
       const steamBath = Math.floor(Math.random() * 4); // 0-3
       const brandSteam = Math.floor(Math.random() * 3); // 0-2
@@ -61,9 +63,9 @@ export async function POST(request: Request) {
       const scrubbing = Math.floor(Math.random() * 3); // 0-2
       const zaparnik = Math.floor(Math.random() * 2); // 0-1
       const masters = 2; // Всегда 2 мастера
-      
+
       // Рассчитываем общую сумму
-      const total = 
+      const total =
         hours * currentPrices.hourly_rate +
         steamBath * currentPrices.steam_bath_price +
         brandSteam * currentPrices.brand_steam_price +
@@ -90,7 +92,7 @@ export async function POST(request: Request) {
         zaparnik_price: currentPrices.zaparnik_price
       };
 
-      await addShift(shift);
+      await shiftRepo.addShift(shift);
       testShifts.push(shift);
     }
 

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getMonthStatuses, getMonthStatus, setMonthClosed } from '@/lib/db';
+import * as monthRepo from '@/repositories/month.repository';
+import { monthService } from '@/services/month.service';
 
 export async function GET(request: NextRequest) {
   try {
@@ -7,11 +8,11 @@ export async function GET(request: NextRequest) {
     const month = searchParams.get('month');
 
     if (month) {
-      const closed = await getMonthStatus(month);
+      const closed = await monthRepo.getMonthStatus(month);
       return NextResponse.json({ month, closed });
     }
 
-    const statuses = await getMonthStatuses();
+    const statuses = await monthRepo.getMonthStatuses();
     return NextResponse.json({ statuses });
   } catch (error) {
     console.error('Ошибка при получении статуса месяца:', error);
@@ -28,8 +29,8 @@ export async function PATCH(request: NextRequest) {
       return NextResponse.json({ error: 'Нужны поля month и closed' }, { status: 400 });
     }
 
-    const updated = await setMonthClosed(month, closed);
-    return NextResponse.json({ success: true, status: updated });
+    await monthService.setMonthClosed(month, closed);
+    return NextResponse.json({ success: true, status: { month, closed } });
   } catch (error) {
     console.error('Ошибка при обновлении статуса месяца:', error);
     return NextResponse.json({ error: 'Ошибка сервера' }, { status: 500 });

@@ -1,4 +1,4 @@
-import { initDatabase } from './db';
+import { initDatabase } from '@/services/db-init.service';
 
 // Глобальная переменная для отслеживания инициализации
 declare global {
@@ -14,13 +14,15 @@ export async function ensureDatabaseInitialized(): Promise<void> {
 
   // Если инициализация уже в процессе, ждем её завершения
   if (global.__db_init_promise) {
+    console.log('⏳ Waiting for existing DB init promise...');
     await global.__db_init_promise;
+    console.log('✅ Waited for DB init promise - DONE');
     return;
   }
 
   // Создаем промис инициализации
   global.__db_init_promise = initDatabase();
-  
+
   try {
     await global.__db_init_promise;
     global.__db_initialized = true;

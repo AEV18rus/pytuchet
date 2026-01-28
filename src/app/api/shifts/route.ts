@@ -1,5 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getShifts, addShift, getPrices, getShiftsForUserAndMonth, recalculateAdvancesForMonth, autoCloseFinishedMonths } from '@/lib/db';
+import * as shiftRepo from '@/repositories/shift.repository';
+import * as priceRepo from '@/repositories/price.repository';
+import { payoutService } from '@/services/payout.service';
+import { monthService } from '@/services/month.service';
 import { requireAuth, requireMasterForMutation } from '@/lib/auth-server';
 
 export async function GET(request: NextRequest) {
@@ -10,10 +13,10 @@ export async function GET(request: NextRequest) {
     const month = searchParams.get('month');
 
     if (userId && month) {
-      const shifts = await getShiftsForUserAndMonth(parseInt(userId), month);
+      const shifts = await shiftRepo.getShiftsForUserAndMonth(parseInt(userId), month);
       return NextResponse.json(shifts);
     } else {
-      const shifts = await getShifts(user.id);
+      const shifts = await shiftRepo.getShifts(user.id);
       return NextResponse.json(shifts);
     }
   } catch (error) {
@@ -40,7 +43,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Общая сумма должна быть положительным числом' }, { status: 400 });
     }
 
-    const prices = await getPrices();
+    const prices = await priceRepo.getPrices();
 
     const shiftData: any = {
       user_id: user.id,
@@ -80,17 +83,17 @@ export async function POST(request: NextRequest) {
       shiftData.zaparnik_price = prices.find(p => p.name === 'Запарник')?.price || 0;
     }
 
-    await addShift(shiftData);
+    await shiftRepo.addShift(shiftData);
 
     // Пересчитываем авансы для месяца, в который добавлена смена
     try {
       const month = (typeof date === 'string' && date.length >= 7) ? date.slice(0, 7) : '';
       if (month) {
-        await recalculateAdvancesForMonth(user.id, month);
+        await payoutService.recalculateAdvancesForMonth(user.id, month);
       }
 
       // Запускаем проверку автоматического закрытия месяцев (в фоновом режиме)
-      autoCloseFinishedMonths().catch(err => console.error('Ошибка в фоновой задаче автозакрытия:', err));
+      monthService.autoCloseFinishedMonths().catch((err: Error) => console.error('Ошибка в фоновой задаче автозакрытия:', err));
     } catch (e) {
       console.error('Ошибка при пересчете авансов:', e);
       // Не прерываем ответ клиенту, так как смена уже добавлена

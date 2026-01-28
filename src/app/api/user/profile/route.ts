@@ -1,11 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getUserFromRequest, requireAuth } from '@/lib/auth-server';
-import { getUserById, updateUser } from '@/lib/db';
+import * as userRepo from '@/repositories/user.repository';
 
 export async function GET(request: NextRequest) {
   try {
     const user = await getUserFromRequest(request);
-    
+
     if (!user) {
       return NextResponse.json(
         { error: 'Пользователь не авторизован' },
@@ -14,7 +14,7 @@ export async function GET(request: NextRequest) {
     }
 
     // Дополнительно получаем расширенные поля профиля из БД
-    const full = await getUserById(user.id);
+    const full = await userRepo.getUserById(user.id);
 
     return NextResponse.json({
       success: true,
@@ -80,7 +80,7 @@ export async function PATCH(request: NextRequest) {
     }
 
     // Обновляем пользователя по его telegram_id (updateUser ожидает telegramId)
-    const updated = await updateUser(user.telegram_id, { display_name: trimmed });
+    const updated = await userRepo.updateUser(user.telegram_id, { display_name: trimmed });
 
     return NextResponse.json({
       success: true,

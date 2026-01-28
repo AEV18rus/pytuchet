@@ -1,12 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getPrices, addPrice, deletePrice } from '@/lib/db';
+import * as priceRepo from '@/repositories/price.repository';
 import { ensureDatabaseInitialized } from '@/lib/global-init';
 import { requireAdmin } from '@/lib/auth-server';
 
 export async function GET() {
   try {
     await ensureDatabaseInitialized();
-    const prices = await getPrices();
+    const prices = await priceRepo.getPrices();
     return NextResponse.json(prices);
   } catch (error) {
     console.error('Ошибка при получении цен:', error);
@@ -19,19 +19,19 @@ export async function POST(request: NextRequest) {
     await requireAdmin(request);
     await ensureDatabaseInitialized();
     const { name, price } = await request.json();
-    
+
     if (!name || !price) {
       return NextResponse.json({ error: 'Название и цена обязательны' }, { status: 400 });
     }
-    
+
     if (typeof price !== 'number' || price <= 0) {
       return NextResponse.json({ error: 'Цена должна быть положительным числом' }, { status: 400 });
     }
-    
 
-    await addPrice({ name, price });
-    
-    return NextResponse.json({ 
+
+    await priceRepo.addPrice({ name, price });
+
+    return NextResponse.json({
       message: 'Цена добавлена успешно',
       price: { name, price }
     });
@@ -55,19 +55,19 @@ export async function DELETE(request: NextRequest) {
     await ensureDatabaseInitialized();
     const { searchParams } = new URL(request.url);
     const id = searchParams.get('id');
-    
+
     if (!id) {
       return NextResponse.json({ error: 'ID услуги обязателен' }, { status: 400 });
     }
-    
+
     const priceId = parseInt(id);
     if (isNaN(priceId)) {
       return NextResponse.json({ error: 'Некорректный ID услуги' }, { status: 400 });
     }
 
-    await deletePrice(priceId);
-    
-    return NextResponse.json({ 
+    await priceRepo.deletePrice(priceId);
+
+    return NextResponse.json({
       message: 'Услуга удалена успешно'
     });
   } catch (error) {

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getMonthTotals } from '@/lib/db';
+import * as monthRepo from '@/repositories/month.repository';
 
 export async function GET(request: NextRequest) {
   try {
@@ -9,7 +9,7 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Требуется параметр month в формате YYYY-MM' }, { status: 400 });
     }
 
-    const totals = await getMonthTotals(month);
+    const totals = await monthRepo.getMonthTotals(month);
     return NextResponse.json({ month, ...totals });
   } catch (error) {
     console.error('Ошибка при получении итогов месяца:', error);

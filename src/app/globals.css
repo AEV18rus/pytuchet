@@ -779,3 +779,78 @@ h6 {
     background: rgba(255, 255, 255, 0.25);
     transform: translateY(-2px);
 }
+
+/* --- REPORTS MOBILE CARDS --- */
+.report-card-mobile {
+    background: white;
+    border-radius: var(--radius-md);
+    padding: 16px;
+    margin-bottom: 16px;
+    box-shadow: var(--shadow-soft);
+    border: 1px solid rgba(0, 0, 0, 0.05);
+}
+
+.report-card-mobile__header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    margin-bottom: 12px;
+}
+
+.report-card-mobile__name {
+    font-weight: 700;
+    font-size: 1.1rem;
+    color: var(--text-main);
+}
+
+.report-card-mobile__balance {
+    font-size: 0.9rem;
+    text-align: right;
+}
+
+.report-card-mobile__divider {
+    height: 1px;
+    background: #eee;
+    margin: 8px 0 12px 0;
+}
+
+.report-card-mobile__row {
+    display: flex;
+    justify-content: space-between;
+    margin-bottom: 8px;
+    font-size: 0.95rem;
+}
+
+.report-card-mobile__label {
+    color: var(--text-muted);
+}
+
+.report-card-mobile__value {
+    font-weight: 600;
+}
+
+.report-card-mobile__actions {
+    display: flex;
+    gap: 12px;
+    margin-top: 16px;
+}
+
+/* --- RESPONSIVE VISIBILITY UTILS --- */
+@media (max-width: 768px) {
+    .hide-mobile {
+        display: none !important;
+    }
+
+    /* show-mobile is block by default or controlled by class presence */
+}
+
+@media (min-width: 769px) {
+    .hide-desktop {
+        display: none !important;
+    }
+
+    /* Explicitly hide mobile elements on desktop */
+    .show-mobile {
+        display: none !important;
+    }
+}

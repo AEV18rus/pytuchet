@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { blockUser, unblockUser, deleteUser, getShifts, setUserRole } from '@/lib/db';
+import * as userRepo from '@/repositories/user.repository';
+import * as shiftRepo from '@/repositories/shift.repository';
 import { requireAdmin } from '@/lib/auth-server';
 
 export async function PATCH(
@@ -21,17 +22,17 @@ export async function PATCH(
     let result;
     switch (action) {
       case 'block':
-        result = await blockUser(userId);
+        result = await userRepo.blockUser(userId);
         break;
       case 'unblock':
-        result = await unblockUser(userId);
+        result = await userRepo.unblockUser(userId);
         break;
       case 'set_role': {
         const role = body.role as 'admin' | 'demo' | 'master';
         if (!role || !['admin', 'demo', 'master'].includes(role)) {
           return NextResponse.json({ error: 'Некорректная роль' }, { status: 400 });
         }
-        result = await setUserRole(userId, role);
+        result = await userRepo.setUserRole(userId, role);
         break;
       }
       default:
@@ -60,7 +61,7 @@ export async function DELETE(
       return NextResponse.json({ error: 'Неверный ID пользователя' }, { status: 400 });
     }
 
-    await deleteUser(userId);
+    await userRepo.deleteUser(userId);
 
     return NextResponse.json({
       success: true,
@@ -84,7 +85,7 @@ export async function GET(
       return NextResponse.json({ error: 'Неверный ID пользователя' }, { status: 400 });
     }
 
-    const shifts = await getShifts(userId);
+    const shifts = await shiftRepo.getShifts(userId);
 
     return NextResponse.json({
       success: true,

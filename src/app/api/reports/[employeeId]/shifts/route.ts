@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getShiftsForUserAndMonth, getMonthlyReportsForAllMasters } from '@/lib/db';
+import * as shiftRepo from '@/repositories/shift.repository';
+import * as userRepo from '@/repositories/user.repository';
 
 interface ShiftData {
   id: number;
@@ -33,13 +34,12 @@ export async function GET(
     }
 
     // Получаем смены сотрудника за указанный месяц
-    const shifts = await getShiftsForUserAndMonth(employeeId, month);
+    const shifts = await shiftRepo.getShiftsForUserAndMonth(employeeId, month);
 
-    // Получаем информацию о пользователе из отчётов
-    const reports = await getMonthlyReportsForAllMasters(month);
-    const userReport = reports.find(report => report.user_id === employeeId);
-    const masterName = userReport ?
-      (userReport.display_name || `${userReport.first_name} ${userReport.last_name || ''}`.trim()) :
+    // Получаем информацию о пользователе напрямую
+    const user = await userRepo.getUserById(employeeId);
+    const masterName = user ?
+      (user.display_name || `${user.first_name} ${user.last_name || ''}`.trim()) :
       'Неизвестный мастер';
 
     // Форматирование данных для новой структуры таблицы

@@ -1,9 +1,9 @@
 import { NextResponse } from 'next/server';
-import { getMonthsWithShiftsData } from '@/lib/db';
+import * as monthRepo from '@/repositories/month.repository';
 
 export async function GET() {
   try {
-    const months = await getMonthsWithShiftsData();
+    const months = await monthRepo.getMonthsWithShiftsData();
     return NextResponse.json({ months });
   } catch (error) {
     console.error('Ошибка при получении месяцев со сменами:', error);

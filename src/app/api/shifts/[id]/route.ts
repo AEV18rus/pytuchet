@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { deleteShift, getShiftById } from '@/lib/db';
+import * as shiftRepo from '@/repositories/shift.repository';
 import { requireMasterForMutation } from '@/lib/auth-server';
 
 export async function DELETE(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
@@ -12,12 +12,12 @@ export async function DELETE(request: NextRequest, { params }: { params: Promise
       return NextResponse.json({ error: 'Некорректный ID' }, { status: 400 });
     }
     // Проверяем, существует ли смена и принадлежит ли пользователю
-    const shift = await getShiftById(id);
+    const shift = await shiftRepo.getShiftById(id);
     if (!shift || shift.user_id !== user.id) {
       return NextResponse.json({ error: 'Смена не найдена или не принадлежит пользователю' }, { status: 404 });
     }
 
-    await deleteShift(id, user.id);
+    await shiftRepo.deleteShift(id, user.id);
 
     return NextResponse.json({ message: 'Смена удалена успешно' });
   } catch (error) {

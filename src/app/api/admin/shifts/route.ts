@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getShiftsWithUsers } from '@/lib/db';
+import * as shiftRepo from '@/repositories/shift.repository';
 import { requireAdmin } from '@/lib/auth-server';
 
 export async function GET(request: NextRequest) {
@@ -7,7 +7,7 @@ export async function GET(request: NextRequest) {
     // Требуется роль администратора
     await requireAdmin(request);
     // Для админ панели получаем все смены с информацией о пользователях
-    const shifts = await getShiftsWithUsers();
+    const shifts = await shiftRepo.getShiftsWithUsers();
     return NextResponse.json(shifts);
   } catch (error) {
     if (error instanceof Error) {

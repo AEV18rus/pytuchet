@@ -1,5 +1,5 @@
 import { NextRequest } from 'next/server';
-import { getUserByTelegramId, getUserById } from './db';
+import { getUserByTelegramId, getUserById } from '@/repositories/user.repository';
 import { verifyToken } from './session';
 
 export interface AuthenticatedUser {

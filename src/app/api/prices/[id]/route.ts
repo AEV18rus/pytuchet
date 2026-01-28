@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { updatePrice } from '@/lib/db';
+import * as priceRepo from '@/repositories/price.repository';
 import { ensureDatabaseInitialized } from '@/lib/global-init';
 import { requireAdmin } from '@/lib/auth-server';
 
@@ -26,7 +26,7 @@ export async function PUT(
       return NextResponse.json({ error: 'Цена должна быть положительным числом' }, { status: 400 });
     }
 
-    await updatePrice(idNum, { name, price });
+    await priceRepo.updatePrice(idNum, { name, price });
 
     return NextResponse.json({
       message: 'Цена обновлена успешно',

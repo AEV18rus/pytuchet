@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getReportsWithGlobalBalanceOptimized } from '@/lib/db';
+import { reportService } from '@/services/report.service';
 
 type RawPayoutEntry = {
   id: number;
@@ -43,7 +43,7 @@ export async function GET(request: NextRequest) {
     const targetMonth = from && to && from === to ? from : undefined;
 
     // Получаем данные с новой логикой глобального баланса (ОПТИМИЗИРОВАННАЯ ВЕРСИЯ)
-    const rawData = await getReportsWithGlobalBalanceOptimized(targetMonth) as RawReportMonth[];
+    const rawData = await reportService.getReportsWithGlobalBalanceOptimized(targetMonth) as unknown as RawReportMonth[];
     console.log('API: Получены отчёты с глобальным балансом (оптимизировано)');
 
     // Фильтруем по диапазону месяцев, если указан

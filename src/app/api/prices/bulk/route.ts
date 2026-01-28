@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { addPrice, updatePrice, getPrices } from '@/lib/db';
+import * as priceRepo from '@/repositories/price.repository';
 import { ensureDatabaseInitialized } from '@/lib/global-init';
 import { requireAdmin } from '@/lib/auth-server';
 
@@ -26,33 +26,33 @@ export async function POST(request: NextRequest) {
     await requireAdmin(request);
     await ensureDatabaseInitialized();
     const prices: Prices = await request.json();
-    
+
     // Валидация данных
     for (const [key, value] of Object.entries(prices)) {
       if (typeof value !== 'number' || value <= 0) {
-        return NextResponse.json({ 
-          error: `Цена для ${priceMapping[key as keyof Prices]} должна быть положительным числом` 
+        return NextResponse.json({
+          error: `Цена для ${priceMapping[key as keyof Prices]} должна быть положительным числом`
         }, { status: 400 });
       }
     }
 
     // Получаем существующие цены
-    const existingPrices = await getPrices();
+    const existingPrices = await priceRepo.getPrices();
     const existingPricesMap = new Map(existingPrices.map(p => [p.name, p]));
-    
+
     // Обновляем или добавляем каждую цену
     for (const [key, value] of Object.entries(prices)) {
       const name = priceMapping[key as keyof Prices];
       const existingPrice = existingPricesMap.get(name);
-      
+
       if (existingPrice) {
-        await updatePrice(existingPrice.id!, { name, price: value });
+        await priceRepo.updatePrice(existingPrice.id!, { name, price: value });
       } else {
-        await addPrice({ name, price: value });
+        await priceRepo.addPrice({ name, price: value });
       }
     }
-    
-    return NextResponse.json({ 
+
+    return NextResponse.json({
       message: 'Цены сохранены успешно',
       prices
     });
@@ -75,33 +75,33 @@ export async function PUT(request: NextRequest) {
     await requireAdmin(request);
     await ensureDatabaseInitialized();
     const prices: Prices = await request.json();
-    
+
     // Валидация данных
     for (const [key, value] of Object.entries(prices)) {
       if (typeof value !== 'number' || value <= 0) {
-        return NextResponse.json({ 
-          error: `Цена для ${priceMapping[key as keyof Prices]} должна быть положительным числом` 
+        return NextResponse.json({
+          error: `Цена для ${priceMapping[key as keyof Prices]} должна быть положительным числом`
         }, { status: 400 });
       }
     }
 
     // Получаем существующие цены
-    const existingPrices = await getPrices();
+    const existingPrices = await priceRepo.getPrices();
     const existingPricesMap = new Map(existingPrices.map(p => [p.name, p]));
-    
+
     // Обновляем или добавляем каждую цену
     for (const [key, value] of Object.entries(prices)) {
       const name = priceMapping[key as keyof Prices];
       const existingPrice = existingPricesMap.get(name);
-      
+
       if (existingPrice) {
-        await updatePrice(existingPrice.id!, { name, price: value });
+        await priceRepo.updatePrice(existingPrice.id!, { name, price: value });
       } else {
-        await addPrice({ name, price: value });
+        await priceRepo.addPrice({ name, price: value });
       }
     }
-    
-    return NextResponse.json({ 
+
+    return NextResponse.json({
       message: 'Цены обновлены успешно',
       prices
     });
@@ -122,8 +122,8 @@ export async function PUT(request: NextRequest) {
 export async function GET() {
   try {
     await ensureDatabaseInitialized();
-    const prices = await getPrices();
-    
+    const prices = await priceRepo.getPrices();
+
     // Преобразуем в формат, ожидаемый фронтендом
     const pricesObject: Prices = {
       hourly_rate: 0,
@@ -133,7 +133,7 @@ export async function GET() {
       scrubbing_price: 0,
       zaparnik_price: 0
     };
-    
+
     // Заполняем данными из базы
     prices.forEach((price: { name: string; price: number }) => {
       const key = Object.keys(priceMapping).find(k => priceMapping[k as keyof Prices] === price.name);
@@ -141,15 +141,15 @@ export async function GET() {
         pricesObject[key as keyof Prices] = price.price;
       }
     });
-    
+
     // Проверяем что все цены загружены из базы
     const missingPrices = Object.entries(pricesObject).filter(([_, value]) => value === 0);
     if (missingPrices.length > 0) {
-      return NextResponse.json({ 
-        error: 'Не все цены найдены в базе данных. Необходимо сначала установить цены.' 
+      return NextResponse.json({
+        error: 'Не все цены найдены в базе данных. Необходимо сначала установить цены.'
       }, { status: 404 });
     }
-    
+
     return NextResponse.json(pricesObject);
   } catch (error) {
     console.error('Ошибка при получении цен:', error);

@@ -1,11 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { updateUser, getUserByTelegramId, createUser } from '@/lib/db';
+import * as userRepo from '@/repositories/user.repository';
 
 export async function POST(request: NextRequest) {
   try {
     // Получаем telegram_id из заголовка
     const telegramId = request.headers.get('x-telegram-id');
-    
+
     if (!telegramId) {
       return NextResponse.json(
         { error: 'Telegram ID не найден' },
@@ -48,8 +48,8 @@ export async function POST(request: NextRequest) {
     }
 
     // Проверяем, существует ли пользователь
-    let existingUser = await getUserByTelegramId(telegramIdNumber);
-    
+    let existingUser = await userRepo.getUserByTelegramId(telegramIdNumber);
+
     if (existingUser && existingUser.display_name) {
       return NextResponse.json(
         { error: 'Пользователь уже зарегистрирован' },
@@ -58,15 +58,15 @@ export async function POST(request: NextRequest) {
     }
 
     let updatedUser;
-    
+
     if (existingUser) {
       // Обновляем существующего пользователя с display_name
-      updatedUser = await updateUser(telegramIdNumber, {
+      updatedUser = await userRepo.updateUser(telegramIdNumber, {
         display_name: trimmedDisplayName
       });
     } else {
       // Создаем нового пользователя (для fallback пользователей)
-      updatedUser = await createUser({
+      updatedUser = await userRepo.createUser({
         telegram_id: telegramIdNumber,
         first_name: 'New',
         last_name: 'User',

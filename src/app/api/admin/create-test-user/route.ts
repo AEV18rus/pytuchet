@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { createUser, getUserByTelegramId } from '@/lib/db';
+import * as userRepo from '@/repositories/user.repository';
 
 export async function POST(request: Request) {
   try {
@@ -15,7 +15,7 @@ export async function POST(request: Request) {
     }
 
     // Проверяем, существует ли уже пользователь с таким telegram_id
-    const existingUser = await getUserByTelegramId(telegram_id);
+    const existingUser = await userRepo.getUserByTelegramId(telegram_id);
     if (existingUser) {
       return NextResponse.json({
         success: true,
@@ -25,7 +25,7 @@ export async function POST(request: Request) {
     }
 
     // Создаем тестового пользователя
-    const testUser = await createUser({
+    const testUser = await userRepo.createUser({
       telegram_id,
       first_name,
       last_name,

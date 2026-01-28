@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getUserByBrowserLogin, updateUser } from '@/lib/db';
+import * as userRepo from '@/repositories/user.repository';
 import { verifyPassword } from '@/lib/password';
 import { signToken } from '@/lib/session';
 import { checkRateLimit, getClientIp } from '@/lib/rateLimit';
@@ -29,7 +29,7 @@ export async function POST(request: NextRequest) {
     }
 
     const login = username.trim();
-    const user = await getUserByBrowserLogin(login);
+    const user = await userRepo.getUserByBrowserLogin(login);
     if (!user || !user.password_hash) {
       return NextResponse.json({ error: 'Неверные учетные данные' }, { status: 401 });
     }
@@ -51,7 +51,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Обновляем дату последнего входа
-    await updateUser(user.telegram_id, { last_login_at: new Date().toISOString() });
+    await userRepo.updateUser(user.telegram_id, { last_login_at: new Date().toISOString() });
 
     const token = signToken({ user_id: user.id!, telegram_id: user.telegram_id });
 

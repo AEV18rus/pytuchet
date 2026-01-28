@@ -1,13 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { ensureDatabaseInitialized } from '@/lib/global-init';
 import { requireAdmin } from '@/lib/auth-server';
-import {
-  getPayoutById,
-  deletePayoutForce,
-  getEarningsForMonth,
-  getPayoutsForMonth,
-  getPayoutHistoryForUserAndMonth
-} from '@/lib/db';
+import * as payoutRepo from '@/repositories/payout.repository';
+import * as monthRepo from '@/repositories/month.repository';
 
 export async function DELETE(
   request: NextRequest,
@@ -24,20 +19,20 @@ export async function DELETE(
       return NextResponse.json({ error: 'Некорректный ID выплаты' }, { status: 400 });
     }
 
-    const existing = await getPayoutById(payoutId);
+    const existing = await payoutRepo.getPayoutById(payoutId);
     if (!existing) {
       return NextResponse.json({ error: 'Выплата не найдена' }, { status: 404 });
     }
 
-    const deleted = await deletePayoutForce(payoutId);
+    const deleted = await payoutRepo.deletePayoutForce(payoutId);
     if (!deleted) {
       return NextResponse.json({ error: 'Не удалось удалить выплату' }, { status: 400 });
     }
 
-    const earnings = await getEarningsForMonth(existing.user_id, existing.month);
-    const totalPaid = await getPayoutsForMonth(existing.user_id, existing.month);
+    const earnings = await monthRepo.getEarningsForMonth(existing.user_id, existing.month);
+    const totalPaid = await payoutRepo.getPayoutsAmountForMonth(existing.user_id, existing.month);
     const remaining = Math.max(0, earnings - totalPaid);
-    const history = await getPayoutHistoryForUserAndMonth(existing.user_id, existing.month, 5);
+    const history = await payoutRepo.getPayoutHistoryForUserAndMonth(existing.user_id, existing.month, 5);
 
     return NextResponse.json({
       payout: existing,

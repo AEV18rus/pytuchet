@@ -30,6 +30,8 @@ export function NewPaymentForm({ onSubmit, onCancel, isSubmitting }: NewPaymentF
         Сумма выплаты
         <input
           type="number"
+          inputMode="numeric"
+          pattern="[0-9]*"
           min="0"
           step="100"
           className={`new-payment-input ${error ? 'new-payment-input--error' : ''}`}

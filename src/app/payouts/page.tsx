@@ -446,6 +446,8 @@ export default function PayoutsPage() {
                 <div className="manual-year-input">
                   <input
                     type="number"
+                    inputMode="numeric"
+                    pattern="[0-9]*"
                     value={manualYear}
                     onChange={(e) => setManualYear(e.target.value)}
                     placeholder="Введите год"
@@ -581,6 +583,8 @@ export default function PayoutsPage() {
                     <label className="form-label">Сумма (₽)</label>
                     <input
                       type="number"
+                      inputMode="numeric"
+                      pattern="[0-9]*"
                       step="0.01"
                       min="0"
                       value={modalData.amount}

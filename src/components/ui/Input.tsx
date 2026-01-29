@@ -11,6 +11,8 @@ interface InputProps {
   error?: string;
   className?: string;
   step?: string;
+  inputMode?: 'none' | 'text' | 'decimal' | 'numeric' | 'tel' | 'search' | 'email' | 'url';
+  pattern?: string;
 }
 
 export const Input: React.FC<InputProps> = ({
@@ -24,7 +26,12 @@ export const Input: React.FC<InputProps> = ({
   error,
   className = '',
   step,
+  inputMode,
+  pattern,
 }) => {
+  // Автоматически устанавливаем цифровые атрибуты для типа number
+  const effectiveInputMode = inputMode || (type === 'number' ? 'numeric' : undefined);
+  const effectivePattern = pattern || (type === 'number' ? '[0-9]*' : undefined);
   const inputClasses = `
     w-full px-3 py-2 border rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500
     ${error ? 'border-red-500' : 'border-gray-300'}
@@ -48,6 +55,8 @@ export const Input: React.FC<InputProps> = ({
         required={required}
         disabled={disabled}
         step={step}
+        inputMode={effectiveInputMode}
+        pattern={effectivePattern}
         className={inputClasses}
       />
       {error && (

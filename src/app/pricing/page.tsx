@@ -29,7 +29,7 @@ export default function PricingPage() {
 
   useEffect(() => {
     // Ensure prices are up-to-date when visiting the page
-    refreshPrices().catch(() => {});
+    refreshPrices().catch(() => { });
   }, [refreshPrices]);
 
   const showNotification = (message: string, type: 'success' | 'error') => {
@@ -102,10 +102,10 @@ export default function PricingPage() {
       showNotification('Только админ может изменять цены', 'error');
       return;
     }
-    
+
     try {
       setUpdatingServiceId(-1); // Use -1 to indicate batch save
-      
+
       // Save all edited prices
       for (const service of prices) {
         if (editingServiceId === service.id && editingPrice.trim()) {
@@ -117,7 +117,7 @@ export default function PricingPage() {
           await updatePrice(service.id!, { name: service.name, price });
         }
       }
-      
+
       showNotification('Все изменения сохранены', 'success');
       setEditingServiceId(null);
       setEditingPrice('');
@@ -258,6 +258,8 @@ export default function PricingPage() {
                         <div className="price-edit-container">
                           <input
                             type="number"
+                            inputMode="numeric"
+                            pattern="[0-9]*"
                             value={editingPrice}
                             onChange={(e) => setEditingPrice(e.target.value)}
                             className="price-edit-input"
@@ -327,6 +329,8 @@ export default function PricingPage() {
                   <label className="form-label" htmlFor="servicePrice">Цена (₽)</label>
                   <input
                     type="number"
+                    inputMode="numeric"
+                    pattern="[0-9]*"
                     id="servicePrice"
                     className="form-input"
                     value={newServicePrice}

@@ -123,6 +123,7 @@ export default function Stepper({
                         ref={inputRef}
                         type="text"
                         inputMode="decimal"
+                        pattern="[0-9]*"
                         className="stepper-input"
                         value={inputValue}
                         onChange={handleInputChange}

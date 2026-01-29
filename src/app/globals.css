@@ -173,7 +173,7 @@ h6 {
         width: 48px;
         height: 48px;
     }
-    
+
     .profile-icon-btn svg {
         width: 28px;
         height: 28px;
@@ -876,7 +876,7 @@ h6 {
     transform: translateY(-2px);
 }
 
-/* --- BALANCE CARD TOP VARIANT (sticky на мобильных) --- */
+/* --- BALANCE CARD TOP VARIANT --- */
 .balance-card--top {
     margin-bottom: 28px;
     /* Больше отступ снизу для разделения от формы */
@@ -884,28 +884,8 @@ h6 {
 
 @media (max-width: 768px) {
     .balance-card--top {
-        position: sticky;
-        top: 16px;
-        /* Отступ от верха экрана */
-        z-index: 950;
-        /* Выше остального контента, но ниже модальных окон */
         margin-bottom: 24px;
         /* Адаптированный отступ для мобильных */
-        box-shadow: 0 12px 32px rgba(62, 39, 35, 0.25);
-        /* Усиленная тень для sticky */
-        animation: balanceSlideIn 0.4s ease-out forwards;
-    }
-
-    @keyframes balanceSlideIn {
-        from {
-            transform: translateY(-30px);
-            opacity: 0;
-        }
-
-        to {
-            transform: translateY(0);
-            opacity: 1;
-        }
     }
 
     /* Уменьшаем размеры на мобильных для компактности */

@@ -25,6 +25,7 @@ export async function GET(request: NextRequest) {
         last_name: user.last_name,
         username: user.username,
         display_name: user.display_name,
+        role: user.role, // Добавляем роль для синхронизации на клиенте
         created_at: user.created_at,
         updated_at: user.updated_at,
         // Новые поля для UI личного кабинета

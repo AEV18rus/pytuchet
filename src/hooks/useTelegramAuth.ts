@@ -1,17 +1,17 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { 
-  AuthenticatedUser, 
-  getUserFromStorage, 
-  saveUserToStorage, 
+import {
+  AuthenticatedUser,
+  getUserFromStorage,
+  saveUserToStorage,
   removeUserFromStorage,
   isTelegramWebApp,
-  getTelegramInitData 
+  getTelegramInitData
 } from '@/lib/auth';
 
-// Функция для проверки существования пользователя в базе данных
-const verifyUserExists = async (user: AuthenticatedUser): Promise<boolean> => {
+// Функция для получения актуальных данных пользователя из API
+const getUserData = async (user: AuthenticatedUser): Promise<AuthenticatedUser | null> => {
   try {
     const response = await fetch('/api/user/profile', {
       method: 'GET',
@@ -19,11 +19,20 @@ const verifyUserExists = async (user: AuthenticatedUser): Promise<boolean> => {
         'x-telegram-id': user.telegram_id.toString(),
       },
     });
-    
-    return response.ok;
+
+    if (!response.ok) {
+      return null;
+    }
+
+    const data = await response.json();
+    if (data.success && data.user) {
+      return data.user as AuthenticatedUser;
+    }
+
+    return null;
   } catch (error) {
-    console.error('Error verifying user existence:', error);
-    return false;
+    console.error('Error fetching user data:', error);
+    return null;
   }
 };
 
@@ -37,7 +46,7 @@ export function useTelegramAuth() {
       try {
         console.log('=== CLIENT AUTH DEBUG ===');
         console.log('Starting authentication process...');
-        
+
         // 0) Сначала проверяем cookie-сессию (браузерный вход)
         try {
           const meRes = await fetch('/api/auth/me', { method: 'GET' });
@@ -59,7 +68,7 @@ export function useTelegramAuth() {
         const storedUser = getUserFromStorage();
         if (storedUser) {
           console.log('Found stored user in localStorage:', storedUser);
-          
+
           // Для fallback пользователей (браузерных) не проверяем базу данных
           if (storedUser.telegram_id === 87654321) {
             console.log('Found fallback user, using directly without DB verification');
@@ -67,11 +76,13 @@ export function useTelegramAuth() {
             setLoading(false);
             return;
           }
-          
-          // Для реальных Telegram пользователей проверяем, существует ли пользователь в базе данных
-          const userExists = await verifyUserExists(storedUser);
-          if (userExists) {
-            setUser(storedUser);
+
+          // Для реальных Telegram пользователей обновляем данные из БД
+          const freshUserData = await getUserData(storedUser);
+          if (freshUserData) {
+            // Обновляем localStorage с актуальными данными (включая роль)
+            setUser(freshUserData);
+            saveUserToStorage(freshUserData);
             setLoading(false);
             return;
           } else {
@@ -83,17 +94,17 @@ export function useTelegramAuth() {
 
         console.log('No stored user found, checking Telegram WebApp...');
         console.log('isTelegramWebApp() result:', isTelegramWebApp());
-        
+
         // Если пользователя нет в localStorage, проверяем Telegram WebApp
         if (isTelegramWebApp()) {
           console.log('Running in Telegram WebApp');
-           console.log('Telegram WebApp object:', typeof window !== 'undefined' && (window as any).Telegram?.WebApp);
-          
+          console.log('Telegram WebApp object:', typeof window !== 'undefined' && (window as any).Telegram?.WebApp);
+
           const initData = getTelegramInitData();
           console.log('getTelegramInitData() result:', initData);
           console.log('initData type:', typeof initData);
           console.log('initData length:', initData ? initData.length : 'null/undefined');
-          
+
           if (initData) {
             console.log('Attempting to authenticate with Telegram...');
             await authenticateWithTelegram(initData);
@@ -141,7 +152,7 @@ export function useTelegramAuth() {
       }
 
       const data = await response.json();
-      
+
       if (data.success && data.user) {
         setUser(data.user);
         saveUserToStorage(data.user);
@@ -159,7 +170,7 @@ export function useTelegramAuth() {
   const authenticateWithFallbackUser = async () => {
     try {
       const isInTelegram = isTelegramWebApp();
-      
+
       const fallbackUser: AuthenticatedUser = {
         id: 0, // Временный ID для нового пользователя
         telegram_id: 87654321,
@@ -188,7 +199,7 @@ export function useTelegramAuth() {
 
   const logout = () => {
     // Выходим из cookie-сессии, если она есть
-    fetch('/api/auth/logout', { method: 'POST' }).catch(() => {});
+    fetch('/api/auth/logout', { method: 'POST' }).catch(() => { });
     setUser(null);
     removeUserFromStorage();
   };

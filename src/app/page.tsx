@@ -304,7 +304,7 @@ export default function HomePage() {
           display: 'flex',
           justifyContent: 'space-between',
           alignItems: 'center',
-          marginBottom: '32px',
+          marginBottom: '24px',
           flexWrap: 'wrap',
           gap: '15px'
         }}>
@@ -324,15 +324,33 @@ export default function HomePage() {
             </div>
             <h1 className="logo-text" style={{ fontSize: '2rem', margin: 0, lineHeight: 1 }}>Путёвой Учет</h1>
           </div>
-          <div style={{ display: 'flex', gap: '10px' }}>
-            <Link href="/account" className="btn">Личный кабинет</Link>
-          </div>
+          {/* Иконка профиля вместо кнопки */}
+          <Link
+            href="/account"
+            className="profile-icon-btn"
+            title="Личный кабинет"
+          >
+            <svg width="32" height="32" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <circle cx="12" cy="8" r="4" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+              <path d="M6 21C6 17.134 8.68629 14 12 14C15.3137 14 18 17.134 18 21" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+            </svg>
+          </Link>
         </header>
 
         <div className="content">
-          {/* <div style={{ display: 'flex', justifyContent: 'flex-start', marginBottom: 20 }}>
-            <Link href="/account" className="btn">Личный кабинет</Link>
-          </div> */}
+          {/* Карточка баланса - теперь первая после header */}
+          <div className="balance-card balance-card--top">
+            <div className="balance-info">
+              <div className="balance-label">Мой Баланс</div>
+              <div className="balance-amount">{currentBalance.toLocaleString()} ₽</div>
+            </div>
+            <div className="balance-actions">
+              <Link href="/payouts" className="balance-btn">
+                Кошелек/Выплаты →
+              </Link>
+            </div>
+          </div>
+
           <UserGreeting />
 
           {/* Mobile Sticky Total Header */}
@@ -453,21 +471,6 @@ export default function HomePage() {
 
           {/* Список смен */}
           <div className="shifts-section">
-
-            {/* Карточка финансового статуса (Этап 3.1) */}
-            <div className="balance-card">
-              <div className="balance-info">
-                <div className="balance-label">Мой Баланс</div>
-                {/* Расчетный баланс (Заработано - Выплачено) */}
-                <div className="balance-amount">{currentBalance.toLocaleString()} ₽</div>
-              </div>
-              <div className="balance-actions">
-                <Link href="/payouts" className="balance-btn">
-                  Кошелек/Выплаты
-                </Link>
-              </div>
-            </div>
-
             <h2>История смен</h2>
             {shifts.length === 0 ? (
               <div className="empty-state">

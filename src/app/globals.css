@@ -138,6 +138,48 @@ h6 {
     letter-spacing: -0.02em;
 }
 
+/* --- PROFILE ICON BUTTON --- */
+.profile-icon-btn {
+    width: 52px;
+    height: 52px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--bg-glass);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+    border: var(--border-glass);
+    border-radius: 50%;
+    color: var(--primary-color);
+    transition: var(--transition);
+    box-shadow: var(--shadow-soft);
+    cursor: pointer;
+}
+
+.profile-icon-btn:hover {
+    background: var(--bg-glass-hover);
+    transform: translateY(-2px);
+    box-shadow: var(--shadow-hover);
+    color: var(--secondary-color);
+}
+
+.profile-icon-btn:active {
+    transform: translateY(0);
+}
+
+/* Адаптация для мобильных */
+@media (max-width: 768px) {
+    .profile-icon-btn {
+        width: 48px;
+        height: 48px;
+    }
+    
+    .profile-icon-btn svg {
+        width: 28px;
+        height: 28px;
+    }
+}
+
 /* --- INPUTS --- */
 .form-grid,
 .services-grid {
@@ -832,6 +874,53 @@ h6 {
 .balance-btn:hover {
     background: rgba(255, 255, 255, 0.25);
     transform: translateY(-2px);
+}
+
+/* --- BALANCE CARD TOP VARIANT (sticky на мобильных) --- */
+.balance-card--top {
+    margin-bottom: 28px;
+    /* Больше отступ снизу для разделения от формы */
+}
+
+@media (max-width: 768px) {
+    .balance-card--top {
+        position: sticky;
+        top: 16px;
+        /* Отступ от верха экрана */
+        z-index: 950;
+        /* Выше остального контента, но ниже модальных окон */
+        margin-bottom: 24px;
+        /* Адаптированный отступ для мобильных */
+        box-shadow: 0 12px 32px rgba(62, 39, 35, 0.25);
+        /* Усиленная тень для sticky */
+        animation: balanceSlideIn 0.4s ease-out forwards;
+    }
+
+    @keyframes balanceSlideIn {
+        from {
+            transform: translateY(-30px);
+            opacity: 0;
+        }
+
+        to {
+            transform: translateY(0);
+            opacity: 1;
+        }
+    }
+
+    /* Уменьшаем размеры на мобильных для компактности */
+    .balance-card--top .balance-amount {
+        font-size: 1.75rem;
+    }
+
+    .balance-card--top .balance-label {
+        font-size: 0.8rem;
+    }
+
+    .balance-card--top .balance-btn {
+        padding: 8px 16px;
+        font-size: 0.85rem;
+    }
 }
 
 /* --- REPORTS MOBILE CARDS --- */

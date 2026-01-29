@@ -46,6 +46,11 @@ export default function HomePage() {
   const [prices, setPrices] = useState<Price[]>([]);
   const [loading, setLoading] = useState(true);
   const [expandedRows, setExpandedRows] = useState<Set<number>>(new Set());
+
+  // Состояния для аккордеона истории смен
+  const [isHistoryOpen, setIsHistoryOpen] = useState(false);
+  const [shiftsLoaded, setShiftsLoaded] = useState(false);
+  const [shiftsLoading, setShiftsLoading] = useState(false);
   const [newShift, setNewShift] = useState<Omit<Shift, 'id' | 'total'>>({
     date: new Date().toISOString().split('T')[0],
     hours: 0,
@@ -71,7 +76,7 @@ export default function HomePage() {
     });
   }, []);
 
-  // Загрузка данных
+  // Загрузка критичных данных (баланс + прайсы)
   const loadData = async () => {
     try {
       setLoading(true);
@@ -82,11 +87,8 @@ export default function HomePage() {
 
       const authHeaders = getAuthHeaders();
 
-      const [shiftsResponse, pricesResponse, payoutsResponse] = await Promise.all([
-        fetch('/api/shifts', {
-          signal: controller.signal,
-          headers: authHeaders
-        }),
+      // Загружаем только критичные данные (без смен)
+      const [pricesResponse, payoutsResponse] = await Promise.all([
         fetch('/api/prices', { signal: controller.signal }),
         fetch('/api/payouts', {
           signal: controller.signal,
@@ -95,13 +97,6 @@ export default function HomePage() {
       ]);
 
       clearTimeout(timeoutId);
-
-      if (shiftsResponse.ok) {
-        const shiftsData = await shiftsResponse.json();
-        setShifts(shiftsData);
-      } else {
-        console.error('Ошибка загрузки смен:', shiftsResponse.status);
-      }
 
       if (payoutsResponse.ok) {
         const payoutsData = await payoutsResponse.json();
@@ -133,26 +128,71 @@ export default function HomePage() {
     }
   };
 
+  // Загрузка истории смен (по запросу)
+  const loadShiftsHistory = async () => {
+    if (shiftsLoaded) {
+      // Если смены уже загружены, просто переключаем видимость
+      setIsHistoryOpen(!isHistoryOpen);
+      return;
+    }
+
+    try {
+      setShiftsLoading(true);
+      setIsHistoryOpen(true);
+
+      const authHeaders = getAuthHeaders();
+      const response = await fetch('/api/shifts', { headers: authHeaders });
+
+      if (response.ok) {
+        const shiftsData = await response.json();
+        setShifts(shiftsData);
+        setShiftsLoaded(true);
+      } else {
+        console.error('Ошибка загрузки смен:', response.status);
+      }
+    } catch (error) {
+      console.error('Ошибка при загрузке истории смен:', error);
+    } finally {
+      setShiftsLoading(false);
+    }
+  };
+
+  // Обновление истории смен
+  const refreshShiftsHistory = async () => {
+    try {
+      setShiftsLoading(true);
+      const authHeaders = getAuthHeaders();
+      const response = await fetch('/api/shifts', { headers: authHeaders });
+
+      if (response.ok) {
+        const shiftsData = await response.json();
+        setShifts(shiftsData);
+      }
+    } catch (error) {
+      console.error('Ошибка при обновлении истории смен:', error);
+    } finally {
+      setShiftsLoading(false);
+    }
+  };
+
   // Обновление данных без таймаута и loading-экрана (для действий пользователя)
   const refreshData = async () => {
     try {
       const authHeaders = getAuthHeaders();
 
-      const [shiftsResponse, payoutsResponse] = await Promise.all([
-        fetch('/api/shifts', { headers: authHeaders }),
-        fetch('/api/payouts', { headers: authHeaders })
-      ]);
-
-      if (shiftsResponse.ok) {
-        const shiftsData = await shiftsResponse.json();
-        setShifts(shiftsData);
-      }
+      // Обновляем только баланс (смены обновляются отдельно через refreshShiftsHistory)
+      const payoutsResponse = await fetch('/api/payouts', { headers: authHeaders });
 
       if (payoutsResponse.ok) {
         const payoutsData = await payoutsResponse.json();
         setGlobalBalance(payoutsData.globalBalance || 0);
         setTotalEarningsFromApi(payoutsData.totalEarnings || 0);
         setTotalPayoutsFromApi(payoutsData.totalPayouts || 0);
+      }
+
+      // Если история смен открыта, обновляем её тоже
+      if (isHistoryOpen && shiftsLoaded) {
+        await refreshShiftsHistory();
       }
     } catch (error) {
       console.error('Ошибка при обновлении данных:', error);
@@ -469,100 +509,131 @@ export default function HomePage() {
 
           </div>
 
-          {/* Список смен */}
+          {/* История смен (аккордеон) */}
           <div className="shifts-section">
-            <h2>История смен</h2>
-            {shifts.length === 0 ? (
-              <div className="empty-state">
-                <div className="empty-title">Пока здесь пусто</div>
-                <div>Добавьте первую смену, чтобы начать учёт</div>
+            {/* Заголовок-аккордеон */}
+            <div className="shifts-accordion-header" onClick={loadShiftsHistory}>
+              <div className="shifts-accordion-title">
+                <span className="accordion-icon">{isHistoryOpen ? '▼' : '▶'}</span>
+                <h2 style={{ margin: 0, fontSize: '1.5rem' }}>История смен</h2>
+                {shiftsLoaded && <span className="shifts-count-badge">{shifts.length}</span>}
               </div>
-            ) : (
-              <>
-                {/* Компактная таблица с раскрывающимися деталями */}
-                <div style={{ overflowX: 'auto' }}>
-                  <table className="shifts-table">
-                    <thead>
-                      <tr>
-                        <th>Дата</th>
-                        <th>Сумма</th>
-                        <th>Действия</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {shifts.map((shift) => (
-                        <React.Fragment key={shift.id}>
-                          <tr
-                            className={`shift-row ${expandedRows.has(shift.id!) ? 'expanded' : ''}`}
-                            onClick={() => shift.id && toggleRowExpansion(shift.id)}
-                            style={{ cursor: 'pointer' }}
-                          >
-                            <td>
-                              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                <span className="expand-icon">
-                                  {expandedRows.has(shift.id!) ? '▼' : '▶'}
-                                </span>
-                                {new Date(shift.date).toLocaleDateString('ru-RU')}
-                              </div>
-                            </td>
-                            <td style={{ fontWeight: '600', color: 'var(--primary-color)' }}>
-                              {shift.total.toLocaleString()}₽
-                            </td>
-                            <td onClick={(e) => e.stopPropagation()}>
-                              <button
-                                className="delete-btn"
-                                onClick={() => shift.id && handleDeleteShift(shift.id)}
-                                title="Удалить смену"
-                                disabled={isDemo}
-                              >
-                                <img src="/trash.svg" alt="Удалить" width="28" height="28" />
-                              </button>
-                            </td>
+              {shiftsLoaded && isHistoryOpen && (
+                <button
+                  className="btn-refresh"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    refreshShiftsHistory();
+                  }}
+                  disabled={shiftsLoading}
+                  title="Обновить историю"
+                >
+                  {shiftsLoading ? '⏳' : '↻'} Обновить
+                </button>
+              )}
+            </div>
+
+            {/* Контент аккордеона */}
+            {isHistoryOpen && (
+              <div className="shifts-accordion-content">
+                {shiftsLoading && !shiftsLoaded ? (
+                  <div className="loading-state">
+                    <div className="loading-spinner"></div>
+                    <div>Загрузка истории смен...</div>
+                  </div>
+                ) : shifts.length === 0 ? (
+                  <div className="empty-state">
+                    <div className="empty-title">Пока здесь пусто</div>
+                    <div>Добавьте первую смену, чтобы начать учёт</div>
+                  </div>
+                ) : (
+                  <>
+                    {/* Компактная таблица с раскрывающимися деталями */}
+                    <div style={{ overflowX: 'auto' }}>
+                      <table className="shifts-table">
+                        <thead>
+                          <tr>
+                            <th>Дата</th>
+                            <th>Сумма</th>
+                            <th>Действия</th>
                           </tr>
-                          {expandedRows.has(shift.id!) && (
-                            <tr className="shift-details-row">
-                              <td colSpan={3}>
-                                <div className="shift-details-content">
-                                  <div className="details-grid">
-                                    <div className="detail-item">
-                                      <span className="detail-label">Часы работы:</span>
-                                      <span className="detail-value">{shift.hours}ч</span>
-                                    </div>
-                                    <div className="detail-item">
-                                      <span className="detail-label">Мастера:</span>
-                                      <span className="detail-value">{shift.masters}</span>
-                                    </div>
-                                    <div className="detail-item">
-                                      <span className="detail-label">Путевое:</span>
-                                      <span className="detail-value">{shift.steam_bath}</span>
-                                    </div>
-                                    <div className="detail-item">
-                                      <span className="detail-label">Фирменное:</span>
-                                      <span className="detail-value">{shift.brand_steam}</span>
-                                    </div>
-                                    <div className="detail-item">
-                                      <span className="detail-label">Ознакомительное:</span>
-                                      <span className="detail-value">{shift.intro_steam}</span>
-                                    </div>
-                                    <div className="detail-item">
-                                      <span className="detail-label">Скрабирование:</span>
-                                      <span className="detail-value">{shift.scrubbing}</span>
-                                    </div>
-                                    <div className="detail-item">
-                                      <span className="detail-label">Запарник:</span>
-                                      <span className="detail-value">{shift.zaparnik}</span>
-                                    </div>
+                        </thead>
+                        <tbody>
+                          {shifts.map((shift) => (
+                            <React.Fragment key={shift.id}>
+                              <tr
+                                className={`shift-row ${expandedRows.has(shift.id!) ? 'expanded' : ''}`}
+                                onClick={() => shift.id && toggleRowExpansion(shift.id)}
+                                style={{ cursor: 'pointer' }}
+                              >
+                                <td>
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                    <span className="expand-icon">
+                                      {expandedRows.has(shift.id!) ? '▼' : '▶'}
+                                    </span>
+                                    {new Date(shift.date).toLocaleDateString('ru-RU')}
                                   </div>
-                                </div>
-                              </td>
-                            </tr>
-                          )}
-                        </React.Fragment>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              </>
+                                </td>
+                                <td style={{ fontWeight: '600', color: 'var(--primary-color)' }}>
+                                  {shift.total.toLocaleString()}₽
+                                </td>
+                                <td onClick={(e) => e.stopPropagation()}>
+                                  <button
+                                    className="delete-btn"
+                                    onClick={() => shift.id && handleDeleteShift(shift.id)}
+                                    title="Удалить смену"
+                                    disabled={isDemo}
+                                  >
+                                    <img src="/trash.svg" alt="Удалить" width="28" height="28" />
+                                  </button>
+                                </td>
+                              </tr>
+                              {expandedRows.has(shift.id!) && (
+                                <tr className="shift-details-row">
+                                  <td colSpan={3}>
+                                    <div className="shift-details-content">
+                                      <div className="details-grid">
+                                        <div className="detail-item">
+                                          <span className="detail-label">Часы работы:</span>
+                                          <span className="detail-value">{shift.hours}ч</span>
+                                        </div>
+                                        <div className="detail-item">
+                                          <span className="detail-label">Мастера:</span>
+                                          <span className="detail-value">{shift.masters}</span>
+                                        </div>
+                                        <div className="detail-item">
+                                          <span className="detail-label">Путевое:</span>
+                                          <span className="detail-value">{shift.steam_bath}</span>
+                                        </div>
+                                        <div className="detail-item">
+                                          <span className="detail-label">Фирменное:</span>
+                                          <span className="detail-value">{shift.brand_steam}</span>
+                                        </div>
+                                        <div className="detail-item">
+                                          <span className="detail-label">Ознакомительное:</span>
+                                          <span className="detail-value">{shift.intro_steam}</span>
+                                        </div>
+                                        <div className="detail-item">
+                                          <span className="detail-label">Скрабирование:</span>
+                                          <span className="detail-value">{shift.scrubbing}</span>
+                                        </div>
+                                        <div className="detail-item">
+                                          <span className="detail-label">Запарник:</span>
+                                          <span className="detail-value">{shift.zaparnik}</span>
+                                        </div>
+                                      </div>
+                                    </div>
+                                  </td>
+                                </tr>
+                              )}
+                            </React.Fragment>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </>
+                )}
+              </div>
             )}
           </div>
 

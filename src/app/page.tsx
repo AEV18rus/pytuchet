@@ -334,6 +334,12 @@ export default function HomePage() {
             <Link href="/account" className="btn">Личный кабинет</Link>
           </div> */}
           <UserGreeting />
+
+          {/* Mobile Sticky Total Header */}
+          <div className="mobile-total-sticky mobile-only">
+            <span className="mobile-total-sticky__label">Итого:</span>
+            <span className="mobile-total-sticky__value">{calculateTotal(newShift).toLocaleString()}₽</span>
+          </div>
           {/* Форма добавления новой смены - ГРУППИРОВКА ПО БЛОКАМ */}
           <div style={{ display: 'flex', flexDirection: 'column', gap: '24px', marginBottom: '32px' }}>
 
@@ -408,7 +414,7 @@ export default function HomePage() {
               </div>
             </div>
 
-            {/* Блок итогов и действий */}
+            {/* Блок итогов и действий (Десктоп) */}
             <div className="glass-panel bg-white/40 desktop-only" style={{ marginBottom: 0, padding: '24px' }}>
               <div className="form-footer">
                 <div className="calculation-info">
@@ -430,6 +436,17 @@ export default function HomePage() {
                   </button>
                 </div>
               </div>
+            </div>
+
+            {/* Mobile Static Save Button */}
+            <div className="mobile-static-action mobile-only">
+              <button
+                className="mobile-save-btn"
+                onClick={handleAddShift}
+                disabled={isDemo || !newShift.date || newShift.hours <= 0}
+              >
+                Сохранить смену
+              </button>
             </div>
 
           </div>
@@ -546,20 +563,7 @@ export default function HomePage() {
             )}
           </div>
 
-          {/* Стики-футер для мобильных */}
-          <div className="mobile-sticky-footer">
-            <div className="mobile-footer-row">
-              <span className="mobile-total-label">Итого за смену:</span>
-              <span className="mobile-total-value">{calculateTotal(newShift).toLocaleString()}₽</span>
-            </div>
-            <button
-              className="mobile-save-btn"
-              onClick={handleAddShift}
-              disabled={isDemo || !newShift.date || newShift.hours <= 0}
-            >
-              Сохранить смену
-            </button>
-          </div>
+          {/* Стики-футер удален в пользу Mobile UX V2 (Sticky Top + Static Bottom) */}
 
         </div>
       </div>

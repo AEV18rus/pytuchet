@@ -85,7 +85,9 @@ export default function HomePage() {
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 30000); // 30 секунд таймаут
 
-      const authHeaders = getAuthHeaders();
+      const authHeaders = user?.telegram_id
+        ? { 'x-telegram-id': user.telegram_id.toString() }
+        : getAuthHeaders();
 
       // Загружаем только критичные данные (без смен)
       const timestamp = new Date().getTime();
@@ -331,12 +333,12 @@ export default function HomePage() {
     }
   }, [authLoading, isAuthenticated, user, router]);
 
-  // Загрузка данных только после завершения аутентификации
+  // Загрузка данных только после завершения аутентификации или смене пользователя
   useEffect(() => {
     if (!authLoading) {
       loadData();
     }
-  }, [authLoading]);
+  }, [authLoading, user?.telegram_id]);
 
   if (loading) {
     return (

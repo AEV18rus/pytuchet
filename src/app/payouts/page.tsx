@@ -153,10 +153,11 @@ export default function PayoutsPage() {
 
       // Если по каким-то причинам telegram_id отсутствует (Telegram WebApp), используем id как telegram_id
       const telegramHeader = (user.telegram_id ?? user.id ?? 87654321).toString();
-      const response = await fetch('/api/payouts', {
+      const response = await fetch(`/api/payouts?t=${new Date().getTime()}`, {
         headers: {
           'x-telegram-id': telegramHeader
-        }
+        },
+        cache: 'no-store'
       });
 
       console.log('Response status:', response.status);

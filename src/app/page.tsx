@@ -88,11 +88,16 @@ export default function HomePage() {
       const authHeaders = getAuthHeaders();
 
       // Загружаем только критичные данные (без смен)
+      const timestamp = new Date().getTime();
       const [pricesResponse, payoutsResponse] = await Promise.all([
-        fetch('/api/prices', { signal: controller.signal }),
-        fetch('/api/payouts', {
+        fetch(`/api/prices?t=${timestamp}`, {
           signal: controller.signal,
-          headers: authHeaders
+          cache: 'no-store'
+        }),
+        fetch(`/api/payouts?t=${timestamp}`, {
+          signal: controller.signal,
+          headers: authHeaders,
+          cache: 'no-store'
         })
       ]);
 
@@ -141,7 +146,10 @@ export default function HomePage() {
       setIsHistoryOpen(true);
 
       const authHeaders = getAuthHeaders();
-      const response = await fetch('/api/shifts', { headers: authHeaders });
+      const response = await fetch(`/api/shifts?t=${new Date().getTime()}`, {
+        headers: authHeaders,
+        cache: 'no-store'
+      });
 
       if (response.ok) {
         const shiftsData = await response.json();
@@ -162,7 +170,10 @@ export default function HomePage() {
     try {
       setShiftsLoading(true);
       const authHeaders = getAuthHeaders();
-      const response = await fetch('/api/shifts', { headers: authHeaders });
+      const response = await fetch(`/api/shifts?t=${new Date().getTime()}`, {
+        headers: authHeaders,
+        cache: 'no-store'
+      });
 
       if (response.ok) {
         const shiftsData = await response.json();
@@ -181,7 +192,10 @@ export default function HomePage() {
       const authHeaders = getAuthHeaders();
 
       // Обновляем только баланс (смены обновляются отдельно через refreshShiftsHistory)
-      const payoutsResponse = await fetch('/api/payouts', { headers: authHeaders });
+      const payoutsResponse = await fetch(`/api/payouts?t=${new Date().getTime()}`, {
+        headers: authHeaders,
+        cache: 'no-store'
+      });
 
       if (payoutsResponse.ok) {
         const payoutsData = await payoutsResponse.json();

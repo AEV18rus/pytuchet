@@ -197,6 +197,32 @@ export default function AccountPage() {
     );
   }
 
+  const handleExportExcel = async () => {
+    setStatus(null);
+    setError(null);
+    const confirmMsg = 'Сформировать полный архив данных (смены и выплаты) и отправить вам в чат?';
+    if (!confirm(confirmMsg)) return;
+
+    try {
+      setStatus('Формирование отчета... Это может занять несколько секунд.');
+      const res = await fetch('/api/user/export-excel', {
+        method: 'POST',
+        headers: getAuthHeaders()
+      });
+
+      if (res.ok) {
+        setStatus('✅ Отчет успешно отправлен вам в личные сообщения от бота!');
+      } else {
+        const data = await res.json();
+        setError(data.error || 'Ошибка при отправке отчета');
+        setStatus(null);
+      }
+    } catch {
+      setError('Ошибка соединения');
+      setStatus(null);
+    }
+  };
+
   // Основные стили страницы аккаунта
   const Styles = (
     <style jsx global>{`
@@ -462,6 +488,15 @@ export default function AccountPage() {
   .btn-secondary:hover {
     background: linear-gradient(135deg, var(--accent-dark) 0%, var(--accent-color) 100%);
   }
+  
+  .btn-excel {
+    background: linear-gradient(135deg, #107c41, #1e8e3e);
+    color: white;
+  }
+  .btn-excel:hover {
+    background: linear-gradient(135deg, #0e6f39, #15803d);
+  }
+
   .buttons-row { display: flex; gap: 12px; margin-top: 12px; flex-wrap: wrap; align-items: stretch; }
   .buttons-row .btn { flex: 1 1 auto; min-width: 200px; }
   .status-line { margin-bottom: 16px; font-size: 14px; color: var(--font-color); }
@@ -544,7 +579,21 @@ export default function AccountPage() {
               </div>
             </div>
           </section>
-  
+
+          <section className="section">
+            <h2>Управление данными</h2>
+            <p className="status-line">Выгрузка всех ваших смен и выплат в формате Excel.<br />Файл будет отправлен вам в личные сообщения от бота.</p>
+            <div className="buttons-row">
+              <button
+                type="button"
+                className="btn btn-excel"
+                onClick={handleExportExcel}
+              >
+                📥 Скачать архив (Excel)
+              </button>
+            </div>
+          </section>
+
           <section className="section">
             <h2>Установка пароля для входа в браузере</h2>
             <p className="status-line">
@@ -591,7 +640,7 @@ export default function AccountPage() {
               </div>
             </form>
           </section>
-  
+
           {error && <p className="status-message error">{error}</p>}
           {status && <p className="status-message success">{status}</p>}
           {logoutStatus && <p className="status-message">{logoutStatus}</p>}

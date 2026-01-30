@@ -47,7 +47,22 @@ export function useTelegramAuth() {
         console.log('=== CLIENT AUTH DEBUG ===');
         console.log('Starting authentication process...');
 
-        // 0) Сначала проверяем cookie-сессию (браузерный вход)
+        // 1. Приоритет: Telegram WebApp (всегда актуальный пользователь)
+        if (isTelegramWebApp()) {
+          console.log('Running in Telegram WebApp');
+
+          const initData = getTelegramInitData();
+          if (initData) {
+            console.log('Attempting to authenticate with Telegram...');
+            await authenticateWithTelegram(initData);
+            return; // Успешно начали процесс через Telegram, выходим
+          }
+        }
+
+        // 2. Если не Telegram или нет initData -> проверяем Cookie/LocalStorage
+        console.log('Not in Telegram or no initData. Checking storage...');
+
+        // Проверяем cookie-сессию
         try {
           const meRes = await fetch('/api/auth/me', { method: 'GET' });
           if (meRes.ok) {
@@ -64,66 +79,36 @@ export function useTelegramAuth() {
           console.log('Cookie session not available:', cookieErr);
         }
 
-        // Сначала проверяем localStorage
+        // Проверяем localStorage
         const storedUser = getUserFromStorage();
         if (storedUser) {
           console.log('Found stored user in localStorage:', storedUser);
 
-          // Для fallback пользователей (браузерных) не проверяем базу данных
+          // Для fallback пользователей не проверяем базу
           if (storedUser.telegram_id === 87654321) {
-            console.log('Found fallback user, using directly without DB verification');
             setUser(storedUser);
             setLoading(false);
             return;
           }
 
-          // Для реальных Telegram пользователей обновляем данные из БД
+          // Обновляем данные из БД
           const freshUserData = await getUserData(storedUser);
           if (freshUserData) {
-            // Обновляем localStorage с актуальными данными (включая роль)
             setUser(freshUserData);
             saveUserToStorage(freshUserData);
             setLoading(false);
             return;
           } else {
-            console.log('User from localStorage no longer exists in database, clearing localStorage');
             removeUserFromStorage();
-            // Продолжаем с обычной аутентификацией
           }
         }
 
-        console.log('No stored user found, checking Telegram WebApp...');
-        console.log('isTelegramWebApp() result:', isTelegramWebApp());
+        // 3. Если ничего не нашли -> Fallback
+        console.log('No auth found, using fallback user');
+        await authenticateWithFallbackUser();
 
-        // Если пользователя нет в localStorage, проверяем Telegram WebApp
-        if (isTelegramWebApp()) {
-          console.log('Running in Telegram WebApp');
-          console.log('Telegram WebApp object:', typeof window !== 'undefined' && (window as any).Telegram?.WebApp);
-
-          const initData = getTelegramInitData();
-          console.log('getTelegramInitData() result:', initData);
-          console.log('initData type:', typeof initData);
-          console.log('initData length:', initData ? initData.length : 'null/undefined');
-
-          if (initData) {
-            console.log('Attempting to authenticate with Telegram...');
-            await authenticateWithTelegram(initData);
-          } else {
-            console.log('No initData available, using fallback user');
-            // Если не удалось получить данные Telegram, используем fallback пользователя
-            await authenticateWithFallbackUser();
-          }
-        } else {
-          console.log('Not running in Telegram WebApp, using fallback user');
-          // Если не в Telegram WebApp, используем fallback пользователя
-          await authenticateWithFallbackUser();
-        }
       } catch (err) {
         console.error('Ошибка инициализации авторизации:', err);
-        console.error('Error details:', {
-          message: err instanceof Error ? err.message : 'Unknown error',
-          stack: err instanceof Error ? err.stack : 'No stack trace'
-        });
         setError('Ошибка авторизации');
       } finally {
         setLoading(false);
